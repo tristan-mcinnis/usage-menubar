@@ -38,8 +38,11 @@ public enum HTTP {
         let task = session.dataTask(with: request) { data, response, error in
             defer { done.signal() }
             if let error {
+                // The system's own words for the failure ("The Internet
+                // connection appears to be offline"), shortened to one line.
                 let urlError = error as? URLError
-                outcome = .failure(.network(urlError?.code == .timedOut ? "timeout" : "network error"))
+                let words = urlError?.code == .timedOut ? "timeout" : error.localizedDescription
+                outcome = .failure(.network(String(words.prefix(60)).trimmingCharacters(in: CharacterSet(charactersIn: ". "))))
                 return
             }
             guard let http = response as? HTTPURLResponse else {
