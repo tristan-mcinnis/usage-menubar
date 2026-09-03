@@ -140,9 +140,11 @@ public enum CodexCredential {
 }
 
 /// A plain API key: the first non-empty line of the first key file that
-/// exists, else the environment, else a keychain item named like the
-/// environment variable.
+/// exists, else the named variable in `~/.config/secrets.env`, else the
+/// environment, else a keychain item named like the variable.
 public enum APIKey {
+
+    public static func secretsFile(tools: ToolPaths) -> String { tools.home + "/.config/secrets.env" }
 
     public static func read(files: [String], environment names: [String], tools: ToolPaths,
                             env: [String: String] = ProcessInfo.processInfo.environment) -> String? {
@@ -150,6 +152,10 @@ public enum APIKey {
             if let text = try? String(contentsOfFile: path, encoding: .utf8), let key = usable(text) {
                 return key
             }
+        }
+        let secrets = parseEnvFile(secretsFile(tools: tools))
+        for name in names {
+            if let key = usable(secrets[name]) { return key }
         }
         for name in names {
             if let key = usable(env[name]) { return key }
@@ -163,6 +169,26 @@ public enum APIKey {
             if result.succeeded, let key = usable(result.stdout) { return key }
         }
         return nil
+    }
+
+    /// `NAME=value` lines, with or without `export`, quotes stripped. Values
+    /// are held only by the caller for one request.
+    public static func parseEnvFile(_ path: String) -> [String: String] {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [:] }
+        var values: [String: String] = [:]
+        for rawLine in text.split(whereSeparator: \.isNewline) {
+            var line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#") { continue }
+            if line.hasPrefix("export ") { line = String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
+            guard let equals = line.firstIndex(of: "=") else { continue }
+            let name = String(line[..<equals]).trimmingCharacters(in: .whitespaces)
+            var value = String(line[line.index(after: equals)...]).trimmingCharacters(in: .whitespaces)
+            if value.count >= 2, let first = value.first, first == "\"" || first == "'", value.last == first {
+                value = String(value.dropFirst().dropLast())
+            }
+            if !name.isEmpty { values[name] = value }
+        }
+        return values
     }
 
     static func usable(_ text: String?) -> String? {
@@ -183,4 +209,10 @@ public enum APIKey {
     }
 
     public static let moonshotNames = ["MOONSHOT_API_KEY", "KIMI_CN_API_KEY"]
+
+    public static func sonioxFiles(tools: ToolPaths) -> [String] {
+        [tools.home + "/.config/soniox/api_key"]
+    }
+
+    public static let sonioxNames = ["SONIOX_API_KEY"]
 }

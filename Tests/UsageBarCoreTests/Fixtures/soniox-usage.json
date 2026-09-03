@@ -1,0 +1,6 @@
+{
+  "total": {"model": null, "days": ["2026-08-05", "2026-08-06"], "total_cost_usd": "12.3456",
+            "total_input_cost_usd": "0", "total_output_cost_usd": "0", "total_duration_cost_usd": "12.3456",
+            "cost_usd": ["1.5", "10.8456"], "total_num_requests": 42, "total_duration_ms": 3600000},
+  "models": [{"model": "stt-async-preview", "days": ["2026-08-05"], "total_cost_usd": "12.3456"}]
+}

@@ -166,6 +166,7 @@ struct SettingsView: View {
                 SlateInfoRow(title: "Antigravity", value: ToolPaths.installed.agy, monospaced: true)
                 SlateInfoRow(title: "DeepSeek", value: APIKey.deepseekFiles(tools: .installed)[0], monospaced: true)
                 SlateInfoRow(title: "Moonshot", value: APIKey.moonshotFiles(tools: .installed)[0], monospaced: true)
+                SlateInfoRow(title: "Soniox", value: "SONIOX_API_KEY in " + APIKey.secretsFile(tools: .installed), monospaced: true)
             }
         }
         .onChange(of: pollInterval) { _, _ in model.schedulePoll() }

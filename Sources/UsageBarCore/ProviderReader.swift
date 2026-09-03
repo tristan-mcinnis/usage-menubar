@@ -9,6 +9,7 @@ public enum ProviderReader {
     public static let codexUsageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
     public static let deepseekBalanceURL = URL(string: "https://api.deepseek.com/user/balance")!
     public static let moonshotDefaultBase = "https://api.moonshot.cn/v1"
+    public static let sonioxUsageURL = URL(string: "https://api.soniox.com/v1/usage/summary")!
 
     public static func read(
         _ provider: ProviderID,
@@ -22,6 +23,7 @@ public enum ProviderReader {
         case .antigravity: return antigravity(tools: tools, now: now)
         case .deepseek: return deepseek(tools: tools, samples: &samples, now: now)
         case .moonshot: return moonshot(tools: tools, samples: &samples, now: now)
+        case .soniox: return soniox(tools: tools, now: now)
         }
     }
 
@@ -142,6 +144,35 @@ public enum ProviderReader {
             return ProviderReading(provider: .moonshot, state: .signIn("Moonshot key rejected"), readAt: now)
         case let .failure(failure):
             return ProviderReading(provider: .moonshot, state: .error(failure.message), readAt: now)
+        }
+    }
+}
+
+extension ProviderReader {
+
+    /// Spend over the last thirty days, in USD. No balance exists to read.
+    static func soniox(tools: ToolPaths, now: Date) -> ProviderReading {
+        guard let key = APIKey.read(files: APIKey.sonioxFiles(tools: tools), environment: APIKey.sonioxNames, tools: tools) else {
+            return ProviderReading(provider: .soniox, state: .signIn("No Soniox key"), readAt: now)
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        var components = URLComponents(url: sonioxUsageURL, resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "start_time", value: formatter.string(from: now.addingTimeInterval(-30 * 86_400))),
+            URLQueryItem(name: "end_time", value: formatter.string(from: now)),
+        ]
+        switch HTTP.get(components.url!, headers: ["Authorization": "Bearer \(key)"]) {
+        case let .success(data):
+            guard let spent = SonioxUsage.parse(data) else {
+                return ProviderReading(provider: .soniox, state: .error("Unreadable usage answer"), readAt: now)
+            }
+            let meter = Meter(id: "spend-30d", label: "Spent · 30d", percentUsed: nil, amount: spent, currency: "USD", spent: true)
+            return ProviderReading(provider: .soniox, state: .ok, meters: [meter], readAt: now)
+        case .failure(.auth):
+            return ProviderReading(provider: .soniox, state: .signIn("Soniox key rejected"), readAt: now)
+        case let .failure(failure):
+            return ProviderReading(provider: .soniox, state: .error(failure.message), readAt: now)
         }
     }
 }

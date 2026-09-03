@@ -82,4 +82,9 @@ final class ParserTests: XCTestCase {
         XCTAssertEqual(MoonshotBalance.currency(forHost: "api.moonshot.cn"), "CNY")
         XCTAssertEqual(MoonshotBalance.currency(forHost: "api.moonshot.ai"), "USD")
     }
+
+    func testSonioxSpend() throws {
+        XCTAssertEqual(try XCTUnwrap(SonioxUsage.parse(fixture("soniox-usage"))), 12.3456, accuracy: 0.0001)
+        XCTAssertNil(SonioxUsage.parse(Data("{}".utf8)))
+    }
 }

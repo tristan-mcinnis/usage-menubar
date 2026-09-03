@@ -6,7 +6,9 @@ used, how much of each prepaid key is left, and when the tight one resets,
 without opening a browser tab per provider.
 
 Usage owns nothing. Every number is read from a source that already exists
-here, on every poll, and no credential is ever stored by Usage:
+here, on every poll, and no credential is ever stored by Usage. A plain API
+key is looked for in its key file, then by name in `~/.config/secrets.env`,
+then in the environment, then in the keychain:
 
 | Row | Lane | What it reads |
 | --- | --- | --- |
@@ -15,6 +17,7 @@ here, on every poll, and no credential is ever stored by Usage:
 | Antigravity | Subscription | `agy --output-format json --print=/usage`: every bucket, as percent used |
 | DeepSeek | API key | `~/.config/deepseek/api_key`, then `api.deepseek.com/user/balance` |
 | Moonshot | API key | `~/.config/moonshot/api_key`, then `api.moonshot.cn/v1/users/me/balance` |
+| Soniox | API key | `SONIOX_API_KEY` in `~/.config/secrets.env`, then `api.soniox.com/v1/usage/summary`: spend over the last 30 days (Soniox has no balance endpoint) |
 
 Return on a provider row opens that provider's own usage page. ⌘R refreshes.
 

@@ -23,6 +23,7 @@ public enum ProviderID: String, Codable, Sendable, CaseIterable, Identifiable {
     case antigravity
     case deepseek
     case moonshot
+    case soniox
 
     public var id: String { rawValue }
 
@@ -33,13 +34,14 @@ public enum ProviderID: String, Codable, Sendable, CaseIterable, Identifiable {
         case .antigravity: return "Antigravity"
         case .deepseek: return "DeepSeek"
         case .moonshot: return "Moonshot"
+        case .soniox: return "Soniox"
         }
     }
 
     public var lane: Lane {
         switch self {
         case .claude, .codex, .antigravity: return .subscription
-        case .deepseek, .moonshot: return .apiKey
+        case .deepseek, .moonshot, .soniox: return .apiKey
         }
     }
 
@@ -51,6 +53,7 @@ public enum ProviderID: String, Codable, Sendable, CaseIterable, Identifiable {
         case .antigravity: return "arrow.up.circle"
         case .deepseek: return "key"
         case .moonshot: return "key"
+        case .soniox: return "waveform"
         }
     }
 
@@ -62,6 +65,7 @@ public enum ProviderID: String, Codable, Sendable, CaseIterable, Identifiable {
         case .antigravity: return URL(string: "https://antigravity.google/")!
         case .deepseek: return URL(string: "https://platform.deepseek.com/usage")!
         case .moonshot: return URL(string: "https://platform.moonshot.cn/console/account")!
+        case .soniox: return URL(string: "https://console.soniox.com/")!
         }
     }
 
@@ -87,6 +91,9 @@ public struct Meter: Equatable, Sendable, Identifiable, Codable {
     public let currency: String?
     /// A scoped window the account is currently metered against.
     public let active: Bool
+    /// The amount is money spent over a window, not a balance left. It has
+    /// no bar, because a spend has no cap to be a percent of.
+    public let spent: Bool
 
     public init(
         id: String,
@@ -95,7 +102,8 @@ public struct Meter: Equatable, Sendable, Identifiable, Codable {
         resetsAt: Date? = nil,
         amount: Double? = nil,
         currency: String? = nil,
-        active: Bool = false
+        active: Bool = false,
+        spent: Bool = false
     ) {
         self.id = id
         self.label = label
@@ -104,9 +112,10 @@ public struct Meter: Equatable, Sendable, Identifiable, Codable {
         self.amount = amount
         self.currency = currency
         self.active = active
+        self.spent = spent
     }
 
-    public var isBalance: Bool { amount != nil }
+    public var isBalance: Bool { amount != nil && !spent }
 
     /// The number on the right of the row: "42%" or "¥83.20".
     public func value() -> String {
@@ -125,6 +134,7 @@ public struct Meter: Equatable, Sendable, Identifiable, Codable {
         if let resetsAt {
             return "resets " + Format.countdown(to: resetsAt, from: now)
         }
+        if spent { return "spent in the last 30 days" }
         if isBalance, let percentUsed, percentUsed > 0 {
             return "\(Int(percentUsed.rounded()))% of 30d peak spent"
         }
@@ -182,6 +192,9 @@ public struct ProviderReading: Equatable, Sendable, Identifiable {
         case .ok:
             if provider.lane == .apiKey, let balance = meters.first(where: { $0.isBalance }) {
                 return balance.value()
+            }
+            if provider.lane == .apiKey, let spend = meters.first(where: \.spent) {
+                return spend.value() + " spent"
             }
             return plan.map(Format.planTitle) ?? ""
         case let .signIn(reason): return reason

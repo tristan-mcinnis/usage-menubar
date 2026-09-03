@@ -154,4 +154,19 @@ final class ModelTests: XCTestCase {
         XCTAssertNil(APIKey.usable("  \n"))
         XCTAssertNil(APIKey.usable(nil))
     }
+
+    func testEnvFileAndSpendMeter() throws {
+        let path = NSTemporaryDirectory() + "usage-bar-env-\(UUID().uuidString)"
+        try "# note\nexport A=\"one two\"\nB='x'\nC=plain\nbad line\n".write(toFile: path, atomically: true, encoding: .utf8)
+        let values = APIKey.parseEnvFile(path)
+        XCTAssertEqual(values, ["A": "one two", "B": "x", "C": "plain"])
+        XCTAssertEqual(APIKey.parseEnvFile(path + ".missing"), [:])
+
+        let spend = Meter(id: "s", label: "Spent · 30d", percentUsed: nil, amount: 12.3456, currency: "USD", spent: true)
+        XCTAssertFalse(spend.isBalance)
+        XCTAssertEqual(spend.value(), "$12.35")
+        XCTAssertEqual(spend.detail(now: now), "spent in the last 30 days")
+        let reading = ProviderReading(provider: .soniox, state: .ok, meters: [spend], readAt: now)
+        XCTAssertEqual(reading.trailing, "$12.35 spent")
+    }
 }

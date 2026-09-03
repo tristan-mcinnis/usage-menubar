@@ -204,3 +204,14 @@ public enum MoonshotBalance {
         host.hasSuffix(".cn") ? "CNY" : "USD"
     }
 }
+
+/// `GET https://api.soniox.com/v1/usage/summary?start_time=&end_time=`.
+/// Soniox exposes spend, not balance: `total.total_cost_usd` is a decimal
+/// string for the window asked for. The panel shows the last thirty days.
+public enum SonioxUsage {
+
+    public static func parse(_ data: Data) -> Double? {
+        guard let root = JSON.object(data), let total = JSON.object(root["total"]) else { return nil }
+        return JSON.number(total["total_cost_usd"])
+    }
+}
