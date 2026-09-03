@@ -1,0 +1,21 @@
+{
+  "command": {
+    "name": "usage",
+    "data": {
+      "groups": [
+        {"name": "Gemini", "description": "Gemini models",
+         "buckets": [
+           {"id": "gemini-5h", "name": "5 hour", "window": "5h", "remaining_fraction": 0.88, "reset_time": "2026-09-03T16:00:00Z"},
+           {"id": "gemini-weekly", "name": "Weekly", "window": "weekly", "remaining_fraction": 0.45, "reset_time": "2026-09-09T00:00:00Z"}
+         ]},
+        {"name": "Claude",
+         "buckets": [
+           {"id": "claude-weekly", "name": "Weekly", "window": "weekly", "remaining_fraction": 0.0, "reset_time": "2026-09-05T00:00:00Z"},
+           {"id": "broken", "name": "No fraction", "window": "weekly", "reset_time": "2026-09-05T00:00:00Z"}
+         ]},
+        {"name": "Empty", "buckets": []}
+      ]
+    }
+  },
+  "usage": {"input_tokens": 0, "output_tokens": 0}
+}

@@ -1,0 +1,6 @@
+{
+  "code": 0,
+  "data": {"available_balance": 120, "voucher_balance": 20, "cash_balance": 100},
+  "scode": "0x0",
+  "status": true
+}

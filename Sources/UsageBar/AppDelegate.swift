@@ -1,0 +1,138 @@
+import AppKit
+import SwiftUI
+import UsageBarCore
+
+/// Menu-bar app delegate. Owns the status item, the panel, the polling model,
+/// and the settings window. Usage is an `.accessory` app: no Dock icon, and
+/// it never takes the foreground unless a row asks for it.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    private var statusItem: NSStatusItem!
+    private var settingsWindowController: NSWindowController?
+    private var defaultsObserver: NSObjectProtocol?
+
+    private let model = PanelModel()
+    private lazy var panel = MenuBarPanelController(model: model)
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        UserDefaults.standard.register(defaults: [
+            // Dark is the house default; light is first-class.
+            AppearancePreference.key: AppearancePreference.dark.rawValue,
+            PanelModel.pollIntervalKey: 300.0,
+            PanelModel.headlineProviderKey: ProviderID.claude.rawValue,
+        ])
+        AppearancePreference.applyCurrent()
+
+        model.onOpenSettings = { [weak self] in
+            self?.panel.close()
+            self?.openSettings()
+        }
+        model.onQuit = { NSApp.terminate(nil) }
+        model.onSnapshotChange = { [weak self] snapshot in
+            self?.updateStatusItem(snapshot)
+            self?.panel.refit(relativeTo: self?.statusItem.button)
+        }
+
+        setupStatusItem()
+        observeDefaults()
+        model.start()
+    }
+
+    // MARK: - Status item
+
+    private func setupStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = item
+        item.button?.target = self
+        item.button?.action = #selector(togglePanel)
+        item.button?.imagePosition = .imageLeading
+        updateStatusItem(model.snapshot)
+    }
+
+    /// The status item says the same thing the panel header does: the gauge
+    /// from the app icon, and beside it the chosen provider's session
+    /// percent when the settings ask for one. The gauge is painted `danger`
+    /// (the only case that is not a template image) when a subscription
+    /// window is at its cap, which is the one state worth a glance.
+    private func updateStatusItem(_ snapshot: UsageSnapshot) {
+        guard let button = statusItem?.button else { return }
+        let text = model.headlineText(for: snapshot)
+        let description = "Usage — " + snapshot.headline.text
+
+        let image = NSImage(systemSymbolName: "gauge.with.needle", accessibilityDescription: description)
+        if snapshot.anyWindowExhausted {
+            // Colour is the exception the house rule allows for status, and it
+            // is paired with the word in the panel and in the tooltip here.
+            image?.isTemplate = false
+            button.image = image?.tinted(with: House.NSColorToken.danger)
+        } else {
+            image?.isTemplate = true
+            button.image = image
+        }
+        button.title = text.map { " " + $0 } ?? ""
+        button.font = NSFont.monospacedDigitSystemFont(ofSize: House.TypeToken.Size.bodySmall, weight: .regular)
+        button.toolTip = description
+    }
+
+    @objc private func togglePanel() {
+        panel.toggle(relativeTo: statusItem.button)
+    }
+
+    // MARK: - Defaults
+
+    private func observeDefaults() {
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { [weak self] in
+                AppearancePreference.applyCurrent()
+                guard let self else { return }
+                self.updateStatusItem(self.model.snapshot)
+            }
+        }
+    }
+
+    // MARK: - Settings
+
+    @objc private func openSettings() {
+        if let controller = settingsWindowController {
+            controller.showWindow(nil)
+            controller.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let hosting = NSHostingController(rootView: SettingsView(model: model))
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "Usage"
+        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.backgroundColor = House.NSColorToken.surface
+        window.appearance = AppearancePreference.current.nsAppearance
+        window.setContentSize(NSSize(width: 760, height: 540))
+        window.minSize = NSSize(width: 720, height: 460)
+
+        let controller = NSWindowController(window: window)
+        controller.showWindow(self)
+        window.center()
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindowController = controller
+    }
+}
+
+extension NSImage {
+    /// A copy of this symbol painted in one colour. Used only for the status
+    /// item's exhausted state, which DESIGN.md allows to carry `danger`.
+    func tinted(with color: NSColor) -> NSImage {
+        let image = NSImage(size: size, flipped: false) { rect in
+            self.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+}
