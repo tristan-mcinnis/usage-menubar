@@ -55,8 +55,8 @@ why in its own row, in words, in red: "Sign in to Codex", "timeout", "HTTP
 
 The gauge from the app icon, as a template image, with the chosen
 subscription's session percent beside it (Settings › Menu bar; Claude by
-default, or none). The gauge is painted `danger` only when a subscription
-window is at its cap.
+default, or none). It stays the menu bar's own colour; a window at its cap
+says "100%" in the panel.
 
 ## Build and install
 

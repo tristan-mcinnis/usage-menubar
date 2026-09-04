@@ -52,24 +52,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The status item says the same thing the panel header does: the gauge
     /// from the app icon, and beside it the chosen provider's session
-    /// percent when the settings ask for one. The gauge is painted `danger`
-    /// (the only case that is not a template image) when a subscription
-    /// window is at its cap, which is the one state worth a glance.
+    /// percent when the settings ask for one. The gauge is always a template
+    /// image, so it tracks the menu bar's own colour; a window at its cap
+    /// says "100%" in the panel, never in colour here.
     private func updateStatusItem(_ snapshot: UsageSnapshot) {
         guard let button = statusItem?.button else { return }
         let text = model.headlineText(for: snapshot)
         let description = "Usage — " + snapshot.headline.text
 
         let image = NSImage(systemSymbolName: "gauge.with.needle", accessibilityDescription: description)
-        if snapshot.anyWindowExhausted {
-            // Colour is the exception the house rule allows for status, and it
-            // is paired with the word in the panel and in the tooltip here.
-            image?.isTemplate = false
-            button.image = image?.tinted(with: House.NSColorToken.danger)
-        } else {
-            image?.isTemplate = true
-            button.image = image
-        }
+        image?.isTemplate = true
+        button.image = image
         button.title = text.map { " " + $0 } ?? ""
         button.font = NSFont.monospacedDigitSystemFont(ofSize: House.TypeToken.Size.bodySmall, weight: .regular)
         button.toolTip = description
@@ -119,20 +112,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         NSApp.activate(ignoringOtherApps: true)
         settingsWindowController = controller
-    }
-}
-
-extension NSImage {
-    /// A copy of this symbol painted in one colour. Used only for the status
-    /// item's exhausted state, which DESIGN.md allows to carry `danger`.
-    func tinted(with color: NSColor) -> NSImage {
-        let image = NSImage(size: size, flipped: false) { rect in
-            self.draw(in: rect)
-            color.set()
-            rect.fill(using: .sourceAtop)
-            return true
-        }
-        image.isTemplate = false
-        return image
     }
 }

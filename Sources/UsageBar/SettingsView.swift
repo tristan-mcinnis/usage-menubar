@@ -129,7 +129,7 @@ struct SettingsView: View {
     private var menuBarCard: some View {
         SlateCard(
             section: "Menu bar",
-            footnote: "The gauge turns red only when a subscription window is at its cap; the panel says which."
+            footnote: "The gauge is a template image, so it stays the menu bar's own colour; the panel says when a window is at its cap."
         ) {
             SlateRow(
                 title: "Beside the gauge",
