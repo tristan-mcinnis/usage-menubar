@@ -60,7 +60,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let text = model.headlineText(for: snapshot)
         let description = "Usage — " + snapshot.headline.text
 
-        let image = NSImage(systemSymbolName: "gauge.with.needle", accessibilityDescription: description)
+        let image = NSImage(systemSymbolName: "gauge.with.needle", accessibilityDescription: description)?
+            .withSymbolConfiguration(
+                NSImage.SymbolConfiguration(pointSize: House.Control.statusGlyph, weight: .medium)
+            )
         image?.isTemplate = true
         button.image = image
         button.title = text.map { " " + $0 } ?? ""
