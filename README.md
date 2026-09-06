@@ -69,6 +69,31 @@ swift build && swift test          # the parsers, against fixture payloads
 `install.sh` does not launch the app: it puts an item in the menu bar and a
 launch steals focus. Pass `--launch` when you want it opened.
 
+Every install verifies the candidate (codesign, plist id, executable, icon,
+LSUIElement) before touching the installed app, renaming the previous app
+aside rather than deleting it and keeping an immutable snapshot (with its hash
+and signing provenance) so a bad build can be taken back:
+
+```
+./scripts/install.sh --no-build --rollback   # back to the last good build
+./scripts/install.sh --list-backups          # what snapshots are kept
+```
+
+A properly-signed installed app is never silently replaced with a different
+signing identity. That install is refused and the destination is left
+untouched; pass `--allow-signing-change` only to override deliberately.
+
+Exit codes: `0` installed, `1` failed (nothing changed, or the prior app was
+restored), `3` the app was installed but the login item could NOT be registered
+(no rollback happened; fix the login item and re-run).
+
+If another install holds the lock, or a stale lock is left behind, `install.sh`
+refuses instead of stealing it: clear a stale lock with `rm -rf <lock dir>` and
+retry.
+
+Backup snapshots are never auto-pruned; the disk cost grows with the number of
+installs. Move or clear the backup root yourself if you want them gone.
+
 Two diagnostics, neither of which puts a window on screen:
 
 ```

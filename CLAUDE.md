@@ -32,6 +32,18 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
 - **No window without being asked.** `install.sh` does not launch,
   `--render-proof` and `--doctor` set `.prohibited` and exit, and the only
   code that takes the foreground is behind a row the user picked.
+- **An install never destroys the working app.** `install.sh` verifies the
+  candidate (codesign, plist id, executable, icon, LSUIElement, and the embedded
+  codesign Identifier) before touching the destination, renames the previous
+  app aside instead of deleting it first, keeps an immutable snapshot with its
+  hash and signing provenance outside Git, and restores it if publish or
+  post-verify fails. `--rollback` restores the last snapshot. A properly-signed
+  installed app is never silently replaced with a different signing identity
+  (ad-hoc, another team, or a different identifier): that install is refused and
+  only `--allow-signing-change` overrides on purpose. A held install lock is
+  refused, never stolen. Exit 3 means the app was installed but the login item
+  was not registered, and no rollback was done. Install never quits or
+  relaunches a running instance on its own.
 - **Say unknown when it is unknown.** A null window is dropped, not drawn as
   0. A source that failed says why in its row. A balance with no spend yet
   draws an empty track. Never fabricate a reassuring number.
