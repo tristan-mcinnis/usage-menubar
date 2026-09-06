@@ -205,6 +205,22 @@ fi
 [[ "$(snapshot_count "$BAK")" == "0" ]] && pass "no snapshot on first install" || fail "unexpected snapshot"
 [[ "$CAPTURED" != *"open-called"* ]] && pass "no launch/open on default" || fail "open was called on default"
 
+say "1b. --launch opens the installed path after publish"
+DEST_LAUNCH="$TD/launch/$APP_NAME.app"
+BAK_LAUNCH="$TD/launch-backup"
+FAKE_LAUNCH="$TD/fake-launch"
+rm -rf "$DEST_LAUNCH" "$BAK_LAUNCH" "$FAKE_LAUNCH"
+mkdir -p "$FAKE_LAUNCH"
+if PATH="$TD/fakebin:$PATH" FAKEDIR="$FAKE_LAUNCH" run_capture \
+    --no-build --no-login-item --launch --dest "$DEST_LAUNCH" \
+    --backup-root "$BAK_LAUNCH" --dist "$TD/d1/$APP_NAME.app"; then
+  pass "launch install exit 0"
+else
+  fail "launch install exit $? : $CAPTURED"
+fi
+[[ -f "$FAKE_LAUNCH/open-called" ]] && pass "--launch called open" || fail "--launch did not call open"
+[[ "$CAPTURED" == *"Launching $DEST_LAUNCH"* ]] && pass "launch message names destination" || fail "launch message missing destination: $CAPTURED"
+
 say "2. reinstall: prior app snapshotted with hash + signing provenance + source_revision=unknown"
 if run_capture --no-build --no-login-item --dest "$DEST" --backup-root "$BAK" --dist "$TD/d2/$APP_NAME.app"; then
   pass "reinstall exit 0"

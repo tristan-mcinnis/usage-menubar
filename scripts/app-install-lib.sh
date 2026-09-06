@@ -608,7 +608,7 @@ app_install_main() {
   fi
 
   if [[ "$INSTALL_LAUNCH" == "1" ]]; then
-    log "Launching $APP_DEST…"
+    log "Launching ${APP_DEST}…"
     open "$APP_DEST"
   else
     log "Installed to $APP_DEST (not launched). Open it from the menu bar when you want it."
