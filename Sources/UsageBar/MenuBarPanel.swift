@@ -22,6 +22,9 @@ struct ProviderRow: View {
     let isSelected: Bool
     let onHover: () -> Void
     let onTap: () -> Void
+    let onRefresh: () -> Void
+    /// Fixed by the render proof so a stale/error age is the same in every PNG.
+    let now: Date
 
     @Environment(\.colorScheme) private var scheme
 
@@ -54,33 +57,46 @@ struct ProviderRow: View {
         }
         .buttonStyle(.plain)
         .onHover { if $0 { onHover() } }
+        .contextMenu {
+            Button("Refresh \(reading.provider.title)") { onRefresh() }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(reading.provider.title), \(detail), \(trailing)")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     /// The second line: the lane word when the read is fine, the reason when
-    /// it is not. The reason is the only line on the panel that may go red,
-    /// and it is a sentence, so the colour is never alone.
+    /// it is not, with the age of the data it is replacing. The reason is the
+    /// only line on the panel that may go red, and it is a sentence, so the
+    /// colour is never alone.
     private var detail: String {
         switch reading.state {
         case .ok: return reading.provider.lane == .subscription ? "Subscription" : "Prepaid key"
-        case let .signIn(reason), let .error(reason): return reason
+        case .stale:
+            if let age = reading.shownAge(now: now) { return "Restored · \(age)" }
+            return "Restored"
+        case let .signIn(reason), let .error(reason), let .rateLimited(reason):
+            if let stale = reading.staleNote(now: now) { return "\(reason) · \(stale)" }
+            return reason
         case .pending: return "Reading…"
         }
     }
 
     private var detailIsProblem: Bool {
         switch reading.state {
-        case .signIn, .error: return true
-        case .ok, .pending: return false
+        case .signIn, .error, .rateLimited: return true
+        case .ok, .stale, .pending: return false
         }
     }
 
+    /// The number on the right: the last good plan or balance, kept visible
+    /// even while a refresh or a transient failure runs. The reason (if any)
+    /// is in the detail line, so the number is not duplicated. A sign-in ask
+    /// supersedes the last good values, so it draws no number.
     private var trailing: String {
         switch reading.state {
-        case .ok: return reading.trailing
-        case .signIn, .error, .pending: return ""
+        case .pending, .signIn: return ""
+        case .ok, .stale, .error, .rateLimited: return reading.retainedValue
         }
     }
 
@@ -387,9 +403,11 @@ struct MenuBarPanelView: View {
             reading: reading,
             isSelected: model.selection == index,
             onHover: { model.selection = index },
-            onTap: { model.openUsagePage(reading.provider) }
+            onTap: { model.openUsagePage(reading.provider) },
+            onRefresh: { model.refresh(reading.provider) },
+            now: now
         )
-        if reading.state.isOK {
+        if !reading.meters.isEmpty {
             let shown = Self.meters(toShow: reading.meters)
             ForEach(shown) { meter in
                 MeterRow(meter: meter, now: now)

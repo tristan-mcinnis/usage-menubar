@@ -4,10 +4,14 @@
 change would create a second way, change the first one instead.
 
 Usage is the menu-bar face of every metered AI source on this Mac. It owns
-no account, no credential, and no store beyond a file of balance samples.
-Every number it shows came out of a provider's own endpoint or CLI, read with
-a credential the provider's own tool already keeps. If a feature would need
-Usage to hold a secret of its own, the feature is wrong.
+no account and no credential. It writes three files under
+`~/Library/Application Support/Usage`: balance samples (`samples.json`), last
+good readings (`readings.json`), and per-provider rate-limit retry deadlines
+(`retries.json`). All three hold amounts, plan names, and dates, never a
+credential or a token. Every number it shows came out of a provider's own
+endpoint or CLI, read with a credential the provider's own tool already keeps.
+If a feature would need Usage to hold a secret of its own, the feature is
+wrong.
 
 Two targets. `UsageBarCore` is pure: the meter model, one parser per source,
 the credential readers, the one HTTP call, and the sample store, with no
@@ -29,6 +33,12 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
 - **Nothing blocks the main thread.** Every read runs on the model's work
   queue and comes back through `DispatchQueue.main`. Each network call and
   the `agy` launch carry their own timeout.
+- **Opening the panel never fetches.** It is instant and free, so the numbers
+  shown are the last good ones (hydrated from `readings.json` at launch) or the
+  in-flight read. A stale read is freshened by the background timer, a manual
+  ⌘R, or a `didWakeNotification`. A rate-limited provider is skipped until its
+  stored `retries.json` deadline passes, and the last good numbers stay visible
+  with a stale/error age while it waits.
 - **No window without being asked.** `install.sh` does not launch,
   `--render-proof` and `--doctor` set `.prohibited` and exit, and the only
   code that takes the foreground is behind a row the user picked.
@@ -67,9 +77,10 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
   (`~/.baby-menu/extensions/*/server.ts`, 2026-09), which read the live
   endpoints; the fixtures are written to those shapes, not captured from an
   account, so they carry no identity.
-- The panel width, the four-row meter budget, the poll floor, and the
-  60-second open-refresh age are constants on `PanelModel`, not numbers in a
-  view.
+- The panel width, the four-row meter budget, and the poll floor are
+  constants on `PanelModel`, not numbers in a view. Opening the panel never
+  fetches; a stale read is freshened by the background timer, a manual ⌘R or
+  per-provider refresh, or a system wake.
 - Verify with the render proof and `--doctor`, never by launching the app. A
   claim about how a surface looks is backed by a PNG somebody looked at.
 

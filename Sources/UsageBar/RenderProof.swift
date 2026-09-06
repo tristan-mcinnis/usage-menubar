@@ -25,6 +25,8 @@ enum RenderProof {
             let panels: [(String, PanelModel)] = [
                 ("panel-all-read", allReadModel()),
                 ("panel-partial", partialModel()),
+                ("panel-restored", restoredModel()),
+                ("panel-rate-limited", rateLimitedModel()),
                 ("panel-pending", pendingModel()),
             ]
             for (surface, model) in panels {
@@ -79,21 +81,42 @@ enum RenderProof {
             ProviderReading(provider: .moonshot, state: .ok, meters: [
                 Meter(id: "balance", label: "Balance", percentUsed: nil, amount: 120, currency: "CNY"),
             ], readAt: now.addingTimeInterval(-120)),
+            ProviderReading(provider: .soniox, state: .ok, meters: [
+                Meter(id: "spend-30d", label: "Spent · 30d", percentUsed: nil, amount: 12.35, currency: "USD", spent: true),
+            ], readAt: now.addingTimeInterval(-120)),
         ],
         readAt: now.addingTimeInterval(-120)
     )
 
-    /// One source needs a sign-in and one could not be reached.
-    static let partial = UsageSnapshot(
-        readings: [
-            allRead.readings[0],
-            ProviderReading(provider: .codex, state: .signIn("Sign in to Codex"), readAt: now),
-            allRead.readings[2],
-            ProviderReading(provider: .deepseek, state: .error("timeout"), readAt: now),
-            allRead.readings[4],
-        ],
-        readAt: now.addingTimeInterval(-30)
-    )
+    /// One source needs a sign-in and one transient failure keeps its last
+    /// good meter. Built through the production merge so the proof cannot show
+    /// an impossible combination of status and cached data.
+    static let partial = allRead.applying([
+        ProviderReading(
+            provider: .codex,
+            state: .signIn("Sign in to Codex"),
+            attemptedAt: now.addingTimeInterval(-30)
+        ),
+        ProviderReading(
+            provider: .deepseek,
+            state: .error("timeout"),
+            attemptedAt: now.addingTimeInterval(-30)
+        ),
+    ])
+
+    /// A cold launch: every remembered value is visible immediately and
+    /// labelled restored until the first background poll succeeds.
+    static let restored = ReadingStore(readings: allRead.readings).snapshot()
+
+    /// A transient rate limit keeps the last good meters visible and dated.
+    static let rateLimited = allRead.applying([
+        ProviderReading(
+            provider: .claude,
+            state: .rateLimited("rate limited"),
+            attemptedAt: now.addingTimeInterval(-30),
+            retryAfterSeconds: 60
+        ),
+    ])
 
     private static func model(_ snapshot: UsageSnapshot) -> PanelModel {
         let model = PanelModel(defaults: proofDefaults)
@@ -119,6 +142,14 @@ enum RenderProof {
         let model = model(partial)
         model.selection = 1
         return model
+    }
+
+    static func restoredModel() -> PanelModel {
+        model(restored)
+    }
+
+    static func rateLimitedModel() -> PanelModel {
+        model(rateLimited)
     }
 
     static func pendingModel() -> PanelModel {

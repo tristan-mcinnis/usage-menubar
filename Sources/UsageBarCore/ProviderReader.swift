@@ -27,51 +27,85 @@ public enum ProviderReader {
         }
     }
 
+    /// Build a reading for one attempt. `readAt` is the data time, set only on
+    /// a successful read; `attemptedAt` is always `now`, so a failure still
+    /// shows its age. The merge that keeps last-good data on a failure lives in
+    /// `UsageSnapshot.applying`.
+    private static func attempt(
+        _ provider: ProviderID,
+        state: ReadState,
+        plan: String? = nil,
+        meters: [Meter] = [],
+        retryAfterSeconds: TimeInterval? = nil,
+        now: Date
+    ) -> ProviderReading {
+        ProviderReading(
+            provider: provider,
+            state: state,
+            plan: plan,
+            meters: meters,
+            readAt: state.isOK ? now : nil,
+            attemptedAt: now,
+            retryAfterSeconds: retryAfterSeconds
+        )
+    }
+
+    private static func rateLimitReason(_ retryAfter: TimeInterval?) -> String {
+        // The persisted policy may raise the server's hint (including its
+        // common `Retry-After: 0`), so do not print a shorter, false countdown.
+        // A manual refresh reports the actual stored deadline.
+        "rate limited"
+    }
+
     // MARK: - Subscriptions
 
     static func claude(tools: ToolPaths, now: Date) -> ProviderReading {
         guard let credential = ClaudeCredential.read(tools: tools) else {
-            return ProviderReading(provider: .claude, state: .signIn("Sign in to Claude Code"), readAt: now)
+            return attempt(.claude, state: .signIn("Sign in to Claude Code"), now: now)
         }
         let headers = ["Authorization": "Bearer \(credential.token)", "anthropic-beta": "oauth-2025-04-20"]
         switch HTTP.get(claudeUsageURL, headers: headers) {
         case let .success(data):
             guard let meters = ClaudeUsage.parse(data) else {
-                return ProviderReading(provider: .claude, state: .error("Unreadable usage answer"), plan: credential.plan, readAt: now)
+                return attempt(.claude, state: .error("Unreadable usage answer"), plan: credential.plan, now: now)
             }
-            return ProviderReading(provider: .claude, state: .ok, plan: credential.plan, meters: meters, readAt: now)
+            return attempt(.claude, state: .ok, plan: credential.plan, meters: meters, now: now)
         case .failure(.auth):
-            return ProviderReading(provider: .claude, state: .signIn("Sign in to Claude Code"), plan: credential.plan, readAt: now)
+            // The cached token was refused; forget it so the next poll re-reads.
+            ClaudeCredential.resetCache()
+            return attempt(.claude, state: .signIn("Sign in to Claude Code"), plan: credential.plan, now: now)
+        case let .failure(.rateLimited(retryAfter)):
+            return attempt(.claude, state: .rateLimited(rateLimitReason(retryAfter)), plan: credential.plan, retryAfterSeconds: retryAfter, now: now)
         case let .failure(failure):
-            return ProviderReading(provider: .claude, state: .error(failure.message), plan: credential.plan, readAt: now)
+            return attempt(.claude, state: .error(failure.message), plan: credential.plan, now: now)
         }
     }
 
     static func codex(tools: ToolPaths, now: Date) -> ProviderReading {
         guard let credential = CodexCredential.read(tools: tools) else {
-            return ProviderReading(provider: .codex, state: .signIn("Sign in to Codex"), readAt: now)
+            return attempt(.codex, state: .signIn("Sign in to Codex"), now: now)
         }
         var headers = ["Authorization": "Bearer \(credential.token)"]
         if let account = credential.accountID { headers["ChatGPT-Account-Id"] = account }
         switch HTTP.get(codexUsageURL, headers: headers) {
         case let .success(data):
             guard let parsed = CodexUsage.parse(data) else {
-                return ProviderReading(provider: .codex, state: .error("Unreadable usage answer"), plan: credential.plan, readAt: now)
+                return attempt(.codex, state: .error("Unreadable usage answer"), plan: credential.plan, now: now)
             }
-            return ProviderReading(
-                provider: .codex, state: .ok, plan: parsed.plan ?? credential.plan, meters: parsed.meters, readAt: now
-            )
+            return attempt(.codex, state: .ok, plan: parsed.plan ?? credential.plan, meters: parsed.meters, now: now)
         case .failure(.auth):
-            return ProviderReading(provider: .codex, state: .signIn("Sign in to Codex"), plan: credential.plan, readAt: now)
+            return attempt(.codex, state: .signIn("Sign in to Codex"), plan: credential.plan, now: now)
+        case let .failure(.rateLimited(retryAfter)):
+            return attempt(.codex, state: .rateLimited(rateLimitReason(retryAfter)), plan: credential.plan, retryAfterSeconds: retryAfter, now: now)
         case let .failure(failure):
-            return ProviderReading(provider: .codex, state: .error(failure.message), plan: credential.plan, readAt: now)
+            return attempt(.codex, state: .error(failure.message), plan: credential.plan, now: now)
         }
     }
 
     /// `/usage` is a local CLI command: it makes no model turn.
     static func antigravity(tools: ToolPaths, now: Date) -> ProviderReading {
         guard tools.exists(tools.agy) else {
-            return ProviderReading(provider: .antigravity, state: .signIn("agy not installed"), readAt: now)
+            return attempt(.antigravity, state: .signIn("agy not installed"), now: now)
         }
         let result = Subprocess.run(
             executable: tools.agy,
@@ -83,24 +117,24 @@ public enum ProviderReader {
             let reason = said.split(whereSeparator: \.isNewline).first.map(String.init) ?? "agy exited \(result.exitCode)"
             let state: ReadState = reason.lowercased().contains("login") || reason.lowercased().contains("auth")
                 ? .signIn("Sign in to Antigravity") : .error(reason)
-            return ProviderReading(provider: .antigravity, state: state, readAt: now)
+            return attempt(.antigravity, state: state, now: now)
         }
         guard let meters = AntigravityUsage.parse(Data(result.stdout.utf8)) else {
-            return ProviderReading(provider: .antigravity, state: .error("Unreadable usage answer"), readAt: now)
+            return attempt(.antigravity, state: .error("Unreadable usage answer"), now: now)
         }
-        return ProviderReading(provider: .antigravity, state: .ok, meters: meters, readAt: now)
+        return attempt(.antigravity, state: .ok, meters: meters, now: now)
     }
 
     // MARK: - API keys
 
     static func deepseek(tools: ToolPaths, samples: inout SampleStore, now: Date) -> ProviderReading {
         guard let key = APIKey.read(files: APIKey.deepseekFiles(tools: tools), environment: APIKey.deepseekNames, tools: tools) else {
-            return ProviderReading(provider: .deepseek, state: .signIn("No DeepSeek key"), readAt: now)
+            return attempt(.deepseek, state: .signIn("No DeepSeek key"), now: now)
         }
         switch HTTP.get(deepseekBalanceURL, headers: ["Authorization": "Bearer \(key)"]) {
         case let .success(data):
             guard let balances = DeepSeekBalance.parse(data) else {
-                return ProviderReading(provider: .deepseek, state: .error("Unreadable balance answer"), readAt: now)
+                return attempt(.deepseek, state: .error("Unreadable balance answer"), now: now)
             }
             let meters = balances.map { balance -> Meter in
                 let spent = samples.record(balance.total, for: "deepseek:\(balance.currency)", at: now)
@@ -112,38 +146,42 @@ public enum ProviderReader {
                     currency: balance.currency
                 )
             }
-            return ProviderReading(provider: .deepseek, state: .ok, meters: meters, readAt: now)
+            return attempt(.deepseek, state: .ok, meters: meters, now: now)
         case .failure(.auth):
-            return ProviderReading(provider: .deepseek, state: .signIn("DeepSeek key rejected"), readAt: now)
+            return attempt(.deepseek, state: .signIn("DeepSeek key rejected"), now: now)
+        case let .failure(.rateLimited(retryAfter)):
+            return attempt(.deepseek, state: .rateLimited(rateLimitReason(retryAfter)), retryAfterSeconds: retryAfter, now: now)
         case let .failure(failure):
-            return ProviderReading(provider: .deepseek, state: .error(failure.message), readAt: now)
+            return attempt(.deepseek, state: .error(failure.message), now: now)
         }
     }
 
     static func moonshot(tools: ToolPaths, samples: inout SampleStore, now: Date,
                          env: [String: String] = ProcessInfo.processInfo.environment) -> ProviderReading {
         guard let key = APIKey.read(files: APIKey.moonshotFiles(tools: tools), environment: APIKey.moonshotNames, tools: tools) else {
-            return ProviderReading(provider: .moonshot, state: .signIn("No Moonshot key"), readAt: now)
+            return attempt(.moonshot, state: .signIn("No Moonshot key"), now: now)
         }
         let base = (env["MOONSHOT_BASE_URL"]?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 }
             ?? moonshotDefaultBase
         guard let url = URL(string: base.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/users/me/balance") else {
-            return ProviderReading(provider: .moonshot, state: .error("Bad MOONSHOT_BASE_URL"), readAt: now)
+            return attempt(.moonshot, state: .error("Bad MOONSHOT_BASE_URL"), now: now)
         }
         let host = url.host ?? "api.moonshot.cn"
         switch HTTP.get(url, headers: ["Authorization": "Bearer \(key)"]) {
         case let .success(data):
             guard let balance = MoonshotBalance.parse(data) else {
-                return ProviderReading(provider: .moonshot, state: .error("Unreadable balance answer"), readAt: now)
+                return attempt(.moonshot, state: .error("Unreadable balance answer"), now: now)
             }
             let currency = MoonshotBalance.currency(forHost: host)
             let spent = samples.record(balance.available, for: "moonshot:\(host)", at: now)
             let meter = Meter(id: "balance", label: "Balance", percentUsed: spent, amount: balance.available, currency: currency)
-            return ProviderReading(provider: .moonshot, state: .ok, meters: [meter], readAt: now)
+            return attempt(.moonshot, state: .ok, meters: [meter], now: now)
         case .failure(.auth):
-            return ProviderReading(provider: .moonshot, state: .signIn("Moonshot key rejected"), readAt: now)
+            return attempt(.moonshot, state: .signIn("Moonshot key rejected"), now: now)
+        case let .failure(.rateLimited(retryAfter)):
+            return attempt(.moonshot, state: .rateLimited(rateLimitReason(retryAfter)), retryAfterSeconds: retryAfter, now: now)
         case let .failure(failure):
-            return ProviderReading(provider: .moonshot, state: .error(failure.message), readAt: now)
+            return attempt(.moonshot, state: .error(failure.message), now: now)
         }
     }
 }
@@ -153,7 +191,7 @@ extension ProviderReader {
     /// Spend over the last thirty days, in USD. No balance exists to read.
     static func soniox(tools: ToolPaths, now: Date) -> ProviderReading {
         guard let key = APIKey.read(files: APIKey.sonioxFiles(tools: tools), environment: APIKey.sonioxNames, tools: tools) else {
-            return ProviderReading(provider: .soniox, state: .signIn("No Soniox key"), readAt: now)
+            return attempt(.soniox, state: .signIn("No Soniox key"), now: now)
         }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
@@ -165,14 +203,16 @@ extension ProviderReader {
         switch HTTP.get(components.url!, headers: ["Authorization": "Bearer \(key)"]) {
         case let .success(data):
             guard let spent = SonioxUsage.parse(data) else {
-                return ProviderReading(provider: .soniox, state: .error("Unreadable usage answer"), readAt: now)
+                return attempt(.soniox, state: .error("Unreadable usage answer"), now: now)
             }
             let meter = Meter(id: "spend-30d", label: "Spent · 30d", percentUsed: nil, amount: spent, currency: "USD", spent: true)
-            return ProviderReading(provider: .soniox, state: .ok, meters: [meter], readAt: now)
+            return attempt(.soniox, state: .ok, meters: [meter], now: now)
         case .failure(.auth):
-            return ProviderReading(provider: .soniox, state: .signIn("Soniox key rejected"), readAt: now)
+            return attempt(.soniox, state: .signIn("Soniox key rejected"), now: now)
+        case let .failure(.rateLimited(retryAfter)):
+            return attempt(.soniox, state: .rateLimited(rateLimitReason(retryAfter)), retryAfterSeconds: retryAfter, now: now)
         case let .failure(failure):
-            return ProviderReading(provider: .soniox, state: .error(failure.message), readAt: now)
+            return attempt(.soniox, state: .error(failure.message), now: now)
         }
     }
 }

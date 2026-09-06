@@ -71,23 +71,62 @@ public enum ClaudeCredential {
         )
     }
 
+    /// Caches per keychain account, so the per-user item and the shared one are
+    /// read and remembered independently and a failure on one does not suppress
+    /// a read of the other. Held in memory only, never written.
+    private static var caches = CredentialCacheSet<OAuthCredential>()
+
     /// Read the keychain. The service can hold more than one item (an
     /// "unknown"-account item that only carries MCP state, plus the real
     /// per-user item), and `security` returns the first match, so the
     /// user-scoped item is asked for first.
+    ///
+    /// Each account is cached on its own fingerprint (its metadata read without
+    /// `-w`), so no secret passes through unless that account's item changed. An
+    /// unchanged item reuses the cached credential and a remembered nil is not
+    /// re-read, so a poll does not re-read the token or re-prompt a denial every
+    /// time.
     public static func read(tools: ToolPaths, user: String = NSUserName()) -> OAuthCredential? {
         for account in [user, nil] {
-            var arguments = ["find-generic-password", "-s", keychainService]
-            if let account { arguments += ["-a", account] }
-            arguments.append("-w")
-            let result = Subprocess.run(executable: tools.security, arguments: arguments, timeout: 8)
-            guard result.succeeded else { continue }
-            if let credential = parse(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)),
-               !credential.isExpired() {
-                return credential
+            let marker = fingerprint(tools: tools, account: account)
+            let credential = caches.resolve(key: Self.accountKey(account), fingerprint: marker, isValid: { !$0.isExpired() }) {
+                guard let raw = secret(tools: tools, account: account) else { return nil }
+                return parse(raw)
             }
+            if let credential { return credential }
         }
         return nil
+    }
+
+    /// Forget every cached credential (e.g. when a read came back rejected), so
+    /// the next poll re-reads the keychain and picks up a rotated token.
+    public static func resetCache() {
+        caches.invalidate()
+    }
+
+    private static func accountKey(_ account: String?) -> String { account ?? "<shared>" }
+
+    /// The non-secret mark of an item: its keychain metadata read without `-w`.
+    /// A changed item (a rotated token) changes this, and it never carries the
+    /// secret. Returns nil when the account has no such item.
+    static func fingerprint(tools: ToolPaths, account: String?) -> String? {
+        var arguments = ["find-generic-password", "-s", keychainService]
+        if let account { arguments += ["-a", account] }
+        let result = Subprocess.run(executable: tools.security, arguments: arguments, timeout: 8)
+        guard result.succeeded else { return nil }
+        let text = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
+    /// The secret itself, read with `-w`. Only called when the item changed or
+    /// nothing is cached yet, so the token does not cross the process on every
+    /// poll. Never persisted.
+    static func secret(tools: ToolPaths, account: String?) -> String? {
+        var arguments = ["find-generic-password", "-s", keychainService]
+        if let account { arguments += ["-a", account] }
+        arguments.append("-w")
+        let result = Subprocess.run(executable: tools.security, arguments: arguments, timeout: 8)
+        return result.succeeded ? result.stdout.trimmingCharacters(in: .whitespacesAndNewlines) : nil
     }
 }
 

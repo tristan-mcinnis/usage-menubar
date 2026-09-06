@@ -39,10 +39,15 @@ enum Doctor {
                         let detail = meter.detail(now: now).map { " · \($0)" } ?? ""
                         rows.append(("  " + meter.label, meter.value() + detail))
                     }
+                case .stale:
+                    let age = reading.shownAge(now: now).map { " · \($0)" } ?? ""
+                    rows.append((reading.provider.title, "restored\(age)"))
                 case let .signIn(reason):
                     rows.append((reading.provider.title, "SIGN IN: \(reason)"))
                 case let .error(reason):
                     rows.append((reading.provider.title, "FAILED: \(reason)"))
+                case let .rateLimited(reason):
+                    rows.append((reading.provider.title, "RATE LIMITED: \(reason)"))
                 case .pending:
                     rows.append((reading.provider.title, "not read"))
                 }

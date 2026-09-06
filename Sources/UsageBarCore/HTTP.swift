@@ -8,6 +8,9 @@ public enum HTTP {
     public enum Failure: Error, Equatable, Sendable {
         /// 401 or 403: the credential was refused.
         case auth
+        /// 429: the source throttled the ask, with the Retry-After seconds it
+        /// sent, if any.
+        case rateLimited(TimeInterval?)
         /// Any other non-2xx.
         case status(Int)
         /// No answer: DNS, TLS, timeout.
@@ -16,6 +19,9 @@ public enum HTTP {
         public var message: String {
             switch self {
             case .auth: return "credential rejected"
+            case let .rateLimited(retryAfter):
+                if let retryAfter { return "rate limited, retry in \(Int(retryAfter))s" }
+                return "rate limited"
             case let .status(code): return "HTTP \(code)"
             case let .network(reason): return reason
             }
@@ -51,6 +57,9 @@ public enum HTTP {
             }
             if http.statusCode == 401 || http.statusCode == 403 {
                 outcome = .failure(.auth)
+            } else if http.statusCode == 429 {
+                let retryAfter = Backoff.retryAfterSeconds(from: http.value(forHTTPHeaderField: "Retry-After"), now: Date())
+                outcome = .failure(.rateLimited(retryAfter))
             } else if !(200..<300).contains(http.statusCode) {
                 outcome = .failure(.status(http.statusCode))
             } else {

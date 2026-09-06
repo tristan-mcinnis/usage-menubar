@@ -1,20 +1,27 @@
 # Privacy
 
-Usage reads five sources and writes one small file. Each source is read with
+Usage reads six sources and writes three small files. Each source is read with
 a credential its own tool already keeps on this Mac: the Claude Code item in
 the login keychain, `~/.codex/auth.json`, the `agy` CLI's own login, and the
-DeepSeek and Moonshot key files. Usage reads those on every poll and holds
-the value only for the duration of the call; it stores no credential, logs
-no header, and never carries a token past the core target.
+DeepSeek, Moonshot, and Soniox key files (`~/.config/secrets.env` and the
+keychain). Usage reads those on every poll and holds the value only for the
+duration of the call; it stores no credential, logs no header, and never
+carries a token past the core target. The Claude Code token is cached in
+memory behind a non-secret keychain-metadata fingerprint and held in memory
+only, never written.
 
-Its network calls are exactly four, one per remote source, each to that
+Its network calls are exactly five, one per remote source, each to that
 provider's own usage or balance endpoint: `api.anthropic.com`,
-`chatgpt.com`, `api.deepseek.com`, and `api.moonshot.cn` (or the base URL in
-`MOONSHOT_BASE_URL`). There is no telemetry, no crash reporting, no update
-check, and no other host.
+`chatgpt.com`, `api.deepseek.com`, `api.moonshot.cn` (or the base URL in
+`MOONSHOT_BASE_URL`), and `api.soniox.com`. Antigravity is read through the
+local `agy` CLI, so it makes no network call by Usage. There is no telemetry,
+no crash reporting, no update check, and no other host.
 
-The one file it writes is `~/Library/Application Support/Usage/samples.json`:
-balance amounts and timestamps for the prepaid keys, kept thirty days, so a
-balance can be drawn as spend since its peak. Its `UserDefaults` hold the
+The three files it writes live at `~/Library/Application Support/Usage/` and
+hold only amounts, plan names, and dates, never a credential or a token:
+`samples.json` (prepaid-balance amounts and timestamps, kept thirty days, so a
+balance can be drawn as spend since its peak), `readings.json` (last-good
+meters and plan per source, presented stale at launch), and `retries.json`
+(per-provider rate-limit retry deadlines). Its `UserDefaults` hold the
 appearance choice, the poll interval, and which provider the status item
 shows.

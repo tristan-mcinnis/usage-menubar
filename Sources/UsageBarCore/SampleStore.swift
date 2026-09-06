@@ -2,8 +2,8 @@ import Foundation
 
 /// Remembered balances, so a prepaid key can be drawn on the same axis as a
 /// quota window: percent spent since the highest balance seen in the last
-/// thirty days. This is the only thing Usage writes to disk, and it holds
-/// amounts only, never a key.
+/// thirty days. This store holds amounts only, never a key; last-good usage
+/// readings and rate-limit deadlines live in their own credential-free stores.
 public struct SampleStore: Equatable, Sendable {
 
     public struct Sample: Equatable, Sendable, Codable {

@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindowController: NSWindowController?
     private var defaultsObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
 
     private let model = PanelModel()
     private lazy var panel = MenuBarPanelController(model: model)
@@ -36,7 +37,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupStatusItem()
         observeDefaults()
+        observeSystemWake()
         model.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+            self.wakeObserver = nil
+        }
+    }
+
+    /// Refresh when the Mac wakes from sleep, so a long night of closed lid
+    /// turns into a fresh set of numbers rather than a stale one. Opening the
+    /// panel never fetches. The observer is owned here and removed on
+    /// termination.
+    private func observeSystemWake() {
+        let center = NSWorkspace.shared.notificationCenter
+        wakeObserver = center.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.poll() }
+        }
     }
 
     // MARK: - Status item

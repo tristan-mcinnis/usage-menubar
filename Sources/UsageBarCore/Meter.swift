@@ -144,26 +144,87 @@ public struct Meter: Equatable, Sendable, Identifiable, Codable {
 
 /// What a read of one provider came back as.
 public enum ReadState: Equatable, Sendable {
-    /// Meters were read.
+    /// Meters were read just now.
     case ok
+    /// Restored from last session's archive: the data is real but old, shown
+    /// stale until the next successful read.
+    case stale
     /// The credential is missing or was rejected; the text says which.
     case signIn(String)
     /// The source could not be reached or answered with something unreadable.
     case error(String)
+    /// The source throttled the ask; the text says why and how to wait.
+    case rateLimited(String)
     /// Not read yet.
     case pending
 
     public var isOK: Bool { self == .ok }
+
+    /// The words for a non-ok state, for a line that must say what happened.
+    public var reason: String {
+        switch self {
+        case .ok, .stale: return ""
+        case let .signIn(reason), let .error(reason), let .rateLimited(reason): return reason
+        case .pending: return "Reading…"
+        }
+    }
 }
 
-/// One provider, as read: its meters and how the read went.
-public struct ProviderReading: Equatable, Sendable, Identifiable {
+extension ReadState: Codable {
+    private enum CodingKeys: String, CodingKey { case kind, reason }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "ok": self = .ok
+        case "stale": self = .stale
+        case "signIn": self = .signIn(try container.decode(String.self, forKey: .reason))
+        case "error": self = .error(try container.decode(String.self, forKey: .reason))
+        case "rateLimited": self = .rateLimited(try container.decode(String.self, forKey: .reason))
+        case "pending": self = .pending
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "unknown ReadState")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .ok: try container.encode("ok", forKey: .kind)
+        case .stale: try container.encode("stale", forKey: .kind)
+        case let .signIn(reason):
+            try container.encode("signIn", forKey: .kind)
+            try container.encode(reason, forKey: .reason)
+        case let .error(reason):
+            try container.encode("error", forKey: .kind)
+            try container.encode(reason, forKey: .reason)
+        case let .rateLimited(reason):
+            try container.encode("rateLimited", forKey: .kind)
+            try container.encode(reason, forKey: .reason)
+        case .pending: try container.encode("pending", forKey: .kind)
+        }
+    }
+}
+
+/// One provider, as shown: the last good display data and how fresh the
+/// latest read attempt is. `meters` and `plan` are the values to keep on the
+/// row; a transient `error` or `rateLimited` state keeps the last good values,
+/// while `signIn` removes them because the account is no longer valid.
+public struct ProviderReading: Equatable, Sendable, Identifiable, Codable {
     public let provider: ProviderID
     public let state: ReadState
     /// The plan or tier the source named, if it did: "max", "plus", "team".
     public let plan: String?
     public let meters: [Meter]
+    /// When the displayed meters were last read OK. Nil until there has been a
+    /// successful read, so a never-read provider is not shown as stale.
     public let readAt: Date?
+    /// When the latest read attempt happened, successful or not. This is what
+    /// "refreshed X ago" counts from, so a failure still shows its age.
+    public let attemptedAt: Date?
+    /// Retry-After seconds the source sent with a 429, so the retry deadline
+    /// honors it. Nil for any non-rate-limited read.
+    public let retryAfterSeconds: TimeInterval?
 
     public var id: ProviderID { provider }
 
@@ -172,35 +233,65 @@ public struct ProviderReading: Equatable, Sendable, Identifiable {
         state: ReadState,
         plan: String? = nil,
         meters: [Meter] = [],
-        readAt: Date? = nil
+        readAt: Date? = nil,
+        attemptedAt: Date? = nil,
+        retryAfterSeconds: TimeInterval? = nil
     ) {
         self.provider = provider
         self.state = state
         self.plan = plan
         self.meters = meters
         self.readAt = readAt
+        self.attemptedAt = attemptedAt
+        self.retryAfterSeconds = retryAfterSeconds
     }
 
     public static func pending(_ provider: ProviderID) -> ProviderReading {
         ProviderReading(provider: provider, state: .pending)
     }
 
-    /// The row's right-hand text: the plan on a subscription, the balance on
-    /// a key, or the reason there is nothing.
+    /// The last good plan or balance to put on the right of the row, whether or
+    /// not the latest read freshened it. Empty when there is nothing to show
+    /// (a provider never read OK).
+    public var retainedValue: String {
+        if provider.lane == .apiKey, let balance = meters.first(where: { $0.isBalance }) {
+            return balance.value()
+        }
+        if provider.lane == .apiKey, let spend = meters.first(where: \.spent) {
+            return spend.value() + " spent"
+        }
+        return plan.map(Format.planTitle) ?? ""
+    }
+
+    /// The row's right-hand text: the plan on a subscription, the balance on a
+    /// key, or (when there is no number to keep) the reason there is none.
     public var trailing: String {
         switch state {
-        case .ok:
-            if provider.lane == .apiKey, let balance = meters.first(where: { $0.isBalance }) {
-                return balance.value()
-            }
-            if provider.lane == .apiKey, let spend = meters.first(where: \.spent) {
-                return spend.value() + " spent"
-            }
-            return plan.map(Format.planTitle) ?? ""
-        case let .signIn(reason): return reason
-        case let .error(reason): return reason
+        case .ok, .stale: return retainedValue
+        case let .signIn(reason), let .error(reason), let .rateLimited(reason):
+            return retainedValue.isEmpty ? reason : retainedValue
         case .pending: return "Reading…"
         }
+    }
+
+    /// The age of the data this row shows, for a line that must say how old it
+    /// is: "5 min ago". Nil when there is no data to be old.
+    public func shownAge(now: Date = Date()) -> String? {
+        guard let readAt else { return nil }
+        return Format.age(of: readAt, now: now)
+    }
+
+    /// How stale the shown data is for a row the latest read could not refresh
+    /// (an error, a rate limit, a sign-in ask): "stale 5 min ago". Nil when the
+    /// read is fresh or there is no data to be stale.
+    public func staleNote(now: Date = Date()) -> String? {
+        let isStaleable: Bool
+        switch state {
+        case .error, .rateLimited, .signIn: isStaleable = true
+        default: isStaleable = false
+        }
+        guard isStaleable, let readAt else { return nil }
+        return "stale " + Format.age(of: readAt, now: now)
     }
 }
 
@@ -232,21 +323,49 @@ public struct UsageSnapshot: Equatable, Sendable {
 
     public func headline(now: Date) -> (text: String, health: Health) {
         let okCount = readings.filter(\.state.isOK).count
-        if readAt == nil { return ("Reading sources…", .unknown) }
+        // Fresh, restored, and transiently degraded rows may all carry a real
+        // value. Count what is visible rather than only `.ok`, so a cold launch
+        // never says "0 sources" while restored meters are on screen.
+        let visibleCount = readings.filter { reading in
+            switch reading.state {
+            case .ok, .stale: return true
+            case .error, .rateLimited: return !reading.meters.isEmpty || reading.plan != nil
+            case .signIn, .pending: return false
+            }
+        }.count
+        guard let readAt else { return ("Reading sources…", .unknown) }
         let failing = readings.filter {
             if case .signIn = $0.state { return true }
             if case .error = $0.state { return true }
+            if case .rateLimited = $0.state { return true }
             return false
         }
-        let age = readAt.map { "refreshed " + Format.age(of: $0, now: now) } ?? ""
-        if failing.isEmpty {
-            return ("\(okCount) sources · \(age)", .ok)
+        let age = Format.age(of: readAt, now: now)
+        if !failing.isEmpty {
+            let names = failing.map { $0.provider.title }.joined(separator: ", ")
+            if okCount == 0 {
+                if visibleCount > 0 { return ("\(visibleCount) cached · \(names) not refreshed", .failing) }
+                return ("No source readable · \(age)", .failing)
+            }
+            return ("\(okCount) of \(readings.count) · \(names) not read", .failing)
         }
-        if okCount == 0 {
-            return ("No source readable · \(age)", .failing)
+        // Every source was read just now: green, and the age is honest.
+        if readings.allSatisfy(\.state.isOK) {
+            return ("\(okCount) sources · refreshed \(age)", .ok)
         }
-        let names = failing.map { $0.provider.title }.joined(separator: ", ")
-        return ("\(okCount) of \(readings.count) · \(names) not read", .failing)
+        // Some data is restored from last session or still pending: never claim
+        // it is fresh. The dot is dim (unknown), not green.
+        let pendingCount = readings.filter { $0.state == .pending }.count
+        if pendingCount > 0 {
+            return ("\(visibleCount) of \(readings.count) sources · \(age)", .unknown)
+        }
+        let restored = readings.filter { $0.state == .stale }
+        if !restored.isEmpty {
+            let oldest = restored.compactMap(\.readAt).min() ?? readAt
+            let restoredAge = Format.age(of: oldest, now: now)
+            return ("\(restored.count) restored · last read \(restoredAge)", .unknown)
+        }
+        return ("\(visibleCount) of \(readings.count) sources · \(age)", .unknown)
     }
 
     public enum Health: Equatable, Sendable {
@@ -261,6 +380,52 @@ public struct UsageSnapshot: Equatable, Sendable {
             reading.provider.lane == .subscription
                 && reading.meters.contains { ($0.percentUsed ?? 0) >= 100 }
         }
+    }
+}
+
+extension UsageSnapshot {
+    /// Combine a batch of fresh attempt results with what is already shown.
+    ///
+    /// A transient failure (an error or a rate limit) keeps the last good meters
+    /// and plan, so a failure never blanks a number. A sign-in ask supersedes
+    /// them: the credential is not valid, so the last good values stop being
+    /// shown. A provider with no fresh attempt in the batch is left exactly as
+    /// it is, so a background refresh never replaces a not-yet-read row with
+    /// "pending".
+    public func applying(_ attempts: [ProviderReading]) -> UsageSnapshot {
+        var byProvider: [ProviderID: ProviderReading] = [:]
+        for reading in readings { byProvider[reading.provider] = reading }
+        for attempt in attempts {
+            byProvider[attempt.provider] = Self.merge(attempt, over: byProvider[attempt.provider])
+        }
+        let merged = ProviderID.allCases.compactMap { byProvider[$0] }
+        let attempted = attempts.compactMap(\.attemptedAt).max()
+        return UsageSnapshot(readings: merged, readAt: attempted ?? readAt)
+    }
+
+    /// Carry the last good display data over an attempt that could not refresh.
+    /// A transient failure keeps it; a sign-in ask drops it.
+    private static func merge(_ attempt: ProviderReading, over previous: ProviderReading?) -> ProviderReading {
+        if attempt.state.isOK { return attempt }
+        if case .signIn = attempt.state {
+            return ProviderReading(
+                provider: attempt.provider,
+                state: attempt.state,
+                plan: nil,
+                meters: [],
+                readAt: nil,
+                attemptedAt: attempt.attemptedAt
+            )
+        }
+        return ProviderReading(
+            provider: attempt.provider,
+            state: attempt.state,
+            plan: attempt.plan ?? previous?.plan,
+            meters: previous?.meters ?? [],
+            readAt: previous?.readAt,
+            attemptedAt: attempt.attemptedAt,
+            retryAfterSeconds: attempt.retryAfterSeconds
+        )
     }
 }
 

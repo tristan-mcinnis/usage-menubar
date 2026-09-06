@@ -147,11 +147,11 @@ struct SettingsView: View {
     private var sourcesCard: some View {
         SlateCard(
             section: "Sources",
-            footnote: "Usage keeps no credential. It reads what each tool already stores, on every poll, and writes only balance samples to ~/Library/Application Support/Usage."
+            footnote: "Usage keeps no credential. It reads what each tool already stores, and writes balance samples, last-good readings, and rate-limit retry deadlines to ~/Library/Application Support/Usage, never a credential."
         ) {
             SlateRow(
                 title: "Poll interval",
-                detail: "How often every source is asked. Opening the panel also refreshes a reading older than a minute."
+                detail: "How often every source is asked. Opening the panel is instant and never fetches; the numbers it shows are the last good ones."
             ) {
                 SlateSegmented(
                     options: Self.intervals.map { ($0.value, $0.title) },
