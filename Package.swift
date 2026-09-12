@@ -20,6 +20,10 @@ let package = Package(
     targets: [
         .target(name: "UsageBarCore"),
         .executableTarget(name: "UsageBar", dependencies: ["UsageBarCore"]),
+        // The app's own window rules: the menu bar a normal window gets, and
+        // when the app goes back to being a menu-bar app. AppKit only, no
+        // window is opened.
+        .testTarget(name: "UsageBarTests", dependencies: ["UsageBar"]),
         .testTarget(
             name: "UsageBarCoreTests",
             dependencies: ["UsageBarCore"],
