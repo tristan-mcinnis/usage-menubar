@@ -33,12 +33,16 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
 - **Nothing blocks the main thread.** Every read runs on the model's work
   queue and comes back through `DispatchQueue.main`. Each network call and
   the `agy` launch carry their own timeout.
-- **Opening the panel never fetches.** It is instant and free, so the numbers
-  shown are the last good ones (hydrated from `readings.json` at launch) or the
-  in-flight read. A stale read is freshened by the background timer, a manual
-  ⌘R, or a `didWakeNotification`. A rate-limited provider is skipped until its
-  stored `retries.json` deadline passes, and the last good numbers stay visible
-  with a stale/error age while it waits.
+- **Opening the panel never blocks.** It is instant, so the numbers shown are
+  the last good ones (hydrated from `readings.json` at launch) or the in-flight
+  read, and nothing on the open path waits on a network call. An open is free
+  while the numbers are younger than one poll interval. When they are older
+  than that, the open starts a read behind the panel rather than letting an
+  aged number pass for a fresh one; the panel still draws at once. A stale read
+  is also freshened by the background timer, a manual ⌘R, or a
+  `didWakeNotification`. A rate-limited provider is skipped until its stored
+  `retries.json` deadline passes, and the last good numbers stay visible with a
+  stale/error age while it waits.
 - **No window without being asked.** `install.sh` does not launch,
   `--render-proof` and `--doctor` set `.prohibited` and exit, and the only
   code that takes the foreground is behind a row the user picked.
@@ -77,10 +81,17 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
   (`~/.baby-menu/extensions/*/server.ts`, 2026-09), which read the live
   endpoints; the fixtures are written to those shapes, not captured from an
   account, so they carry no identity.
-- The panel width, the four-row meter budget, and the poll floor are
-  constants on `PanelModel`, not numbers in a view. Opening the panel never
-  fetches; a stale read is freshened by the background timer, a manual ⌘R or
-  per-provider refresh, or a system wake.
+- The panel width, the four-row meter budget, the poll floor, and the idle
+  backoff (`idleThreshold`, `idlePollCeiling`, `pollToleranceFraction`) are
+  constants on `PanelModel`, not numbers in a view.
+- Polling costs nothing while nobody looks. Every repeating timer carries a
+  tolerance, so macOS batches its wakeup. A panel unopened for `idleThreshold`
+  polls at a longer interval, doubling per further threshold up to
+  `idlePollCeiling` and never below the user's configured interval; opening it
+  restores the configured cadence at once, and a stale open starts a read
+  behind the panel. `backedOffInterval` and `isStale` are pure, and the clock
+  is injected (`now`), so the decision is tested without waiting. Memory and
+  Local Models carry the same constants and the same rule.
 - Verify with the render proof and `--doctor`, never by launching the app. A
   claim about how a surface looks is backed by a PNG somebody looked at.
 
