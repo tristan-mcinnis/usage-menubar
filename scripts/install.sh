@@ -81,6 +81,28 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# scripts/build-app.sh compiles the WORKING TREE, not HEAD, so installing from
+# a dirty checkout produces a binary that traces to no commit at all (bitten
+# 2026-09-12 in a sibling house repo: a build installed mid-edit ran for an hour
+# answering in a reply format that existed only in uncommitted edits, which is
+# the only reason the mismatch was ever noticed). Refuse by default; override
+# deliberately with USAGE_ALLOW_DIRTY=1, and build-app.sh then stamps the
+# commit as <sha>-dirty. Only the build-from-tree path is guarded: --no-build installs a
+# bundle this run did not build, which already carries the stamp of the tree it
+# was really built from, and --rollback / --list-backups compile nothing.
+if [[ "$INSTALL_CMD" == "install" && "$INSTALL_BUILD" == "1" ]]; then
+  if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]]; then
+    if [[ "${USAGE_ALLOW_DIRTY:-0}" == "1" ]]; then
+      echo "⚠ dirty tree: this build traces to no commit; stamping it -dirty" >&2
+    else
+      echo "refusing to install from a dirty working tree." >&2
+      git -C "$ROOT" status --short >&2
+      echo "commit or stash first, or re-run with USAGE_ALLOW_DIRTY=1 to override." >&2
+      exit 1
+    fi
+  fi
+fi
+
 export APP_NAME EXEC_NAME BUNDLE_ID ROOT
 export INSTALL_BUILD INSTALL_LAUNCH INSTALL_NO_LOGIN_ITEM INSTALL_ALLOW_SIGNING_CHANGE INSTALL_CMD INSTALL_ROLLBACK_ID
 export INSTALL_DEST INSTALL_BACKUP_ROOT INSTALL_DIST_APP
