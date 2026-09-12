@@ -37,6 +37,18 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN" "$CONTENTS/MacOS/$EXEC_NAME"
 sed "s/__VERSION__/$VERSION/g" "$ROOT/Resources/Info.plist" > "$CONTENTS/Info.plist"
 
+# Record WHICH COMMIT went in, ALONGSIDE the version strings above (never
+# replacing them), so an installed binary is always traceable to a revision. A
+# dirty tree is marked, because such a build traces to no commit at all.
+# install.sh refuses a dirty tree; a plain build here is never refused, only
+# marked. This runs before code-signing, so the signature covers the stamp.
+COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]]; then
+  COMMIT="$COMMIT-dirty"
+fi
+/usr/libexec/PlistBuddy -c "Add :UsageBuiltFromCommit string $COMMIT" "$CONTENTS/Info.plist" >/dev/null 2>&1 \
+  || /usr/libexec/PlistBuddy -c "Set :UsageBuiltFromCommit $COMMIT" "$CONTENTS/Info.plist" >/dev/null
+
 # The icon is rendered by the design system, never drawn by hand here.
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
   cp "$ROOT/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
