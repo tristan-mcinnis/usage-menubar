@@ -29,10 +29,12 @@ so a top-up resets the bar the way a weekly reset does. That is the whole
 "apples to apples": a Claude session at 42 %, a Codex week at 63 %, and a
 DeepSeek key 24 % down from its peak sit in one column of bars.
 
-Usage writes three files under `~/Library/Application Support/Usage`:
-balance samples (`samples.json`), last-good readings (`readings.json`), and
-per-provider rate-limit retry deadlines (`retries.json`). All three hold
-amounts, plan names, and dates - never a credential or a token.
+Usage writes four files under `~/Library/Application Support/Usage`:
+balance samples (`samples.json`), last-good readings (`readings.json`),
+per-provider rate-limit retry deadlines (`retries.json`), and one line per
+launch and quit (`events.log`). All four hold amounts, plan names, dates, and
+pids, never a credential or a token. A `launch` line with no `terminate` after
+it means the process was killed or crashed.
 
 Last-good readings are hydrated at launch, so the panel shows the numbers it
 last saw before the first poll returns. Opening the panel never fetches (it is
@@ -102,6 +104,11 @@ retry.
 Backup snapshots are never auto-pruned; the disk cost grows with the number of
 installs. Move or clear the backup root yourself if you want them gone.
 
+`scripts/acceptance.sh` rechecks the whole install against Baby Menu parity
+(see `docs/baby-menu-parity-20260925.md`): build and tests, installed build
+equals `git rev-parse HEAD`, the process alive 60 s after launch, every set-up
+source under 15 minutes old, and two sources matched to ground truth.
+
 Two diagnostics, neither of which puts a window on screen:
 
 ```
@@ -116,8 +123,12 @@ keychain item. Choose Always Allow, or the Claude row stays at "Sign in".
 
 - macOS 14 or later, Apple Silicon.
 - Whichever of the six sources you use, signed in through its own tool. A
-  source that is not set up shows as "No DeepSeek key", "agy not installed",
-  and so on; the others still read.
+  source that is not set up ("No DeepSeek key", "agy not installed") is left
+  off the panel and out of the header count; `--doctor` names it as NOT SET
+  UP and still exits 0 when every source that is set up read.
+- Claude Code's OAuth token lasts about eight hours and Claude Code renews it
+  when it runs. After a long idle stretch the Claude row says "Token expired"
+  and keeps its last numbers, marked stale, until Claude Code runs again.
 
 ## Design
 

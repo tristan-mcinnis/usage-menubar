@@ -4,12 +4,13 @@
 change would create a second way, change the first one instead.
 
 Usage is the menu-bar face of every metered AI source on this Mac. It owns
-no account and no credential. It writes three files under
+no account and no credential. It writes four files under
 `~/Library/Application Support/Usage`: balance samples (`samples.json`), last
-good readings (`readings.json`), and per-provider rate-limit retry deadlines
-(`retries.json`). All three hold amounts, plan names, and dates, never a
-credential or a token. Every number it shows came out of a provider's own
-endpoint or CLI, read with a credential the provider's own tool already keeps.
+good readings (`readings.json`), per-provider rate-limit retry deadlines
+(`retries.json`), and a launch/quit line log (`events.log`). All four hold
+amounts, plan names, dates, and pids, never a credential or a token. Every
+number it shows came out of a provider's own endpoint or CLI, read with a
+credential the provider's own tool already keeps.
 If a feature would need Usage to hold a secret of its own, the feature is
 wrong.
 
@@ -61,6 +62,13 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
 - **Say unknown when it is unknown.** A null window is dropped, not drawn as
   0. A source that failed says why in its row. A balance with no spend yet
   draws an empty track. Never fabricate a reassuring number.
+- **Not set up is not a failure.** A source with no tool or no key
+  (`ReadState.notSetUp`) is left off the panel and out of the header count,
+  so the dot is not red for a tool Tristan does not use; `--doctor` still
+  names it. An expired Claude token is not "sign in": the last numbers stay
+  on the row, marked stale, until Claude Code renews the token itself. Usage
+  never renews it, because a renewal rotates the refresh token Claude Code
+  keeps.
 - **Never re-spell a source's words.** Window labels come from the source's
   own field names and display names ("Weekly · Opus", "Gemini Models ·
   weekly"); Usage decides which fit in 300 px, not what they say.
@@ -91,7 +99,16 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
   restores the configured cadence at once, and a stale open starts a read
   behind the panel. `backedOffInterval` and `isStale` are pure, and the clock
   is injected (`now`), so the decision is tested without waiting. Memory and
-  Local Models carry the same constants and the same rule.
+  Local Models carry the same constants and the same rule. Known limit
+  (2026-09-25): the repeating timer takes its interval when it is armed
+  (launch, panel open, a settings change), so an unopened panel keeps the
+  configured cadence in practice. That keeps every number under 15 minutes
+  old, which `scripts/acceptance.sh` (T4) checks; make the backoff re-arm
+  only together with a ceiling that keeps T4 true.
+- `scripts/acceptance.sh` is the adoption check against Baby Menu: build,
+  tests, installed build equals HEAD, process alive 60 s, every set-up source
+  fresh, two sources matched to ground truth, and the parity table in
+  `docs/baby-menu-parity-20260925.md`.
 - Verify with the render proof and `--doctor`, never by launching the app. A
   claim about how a surface looks is backed by a PNG somebody looked at.
 
