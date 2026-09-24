@@ -14,7 +14,9 @@ every row is `covered`, `not needed` (with a reason), or `gap`.
 
 Changes made for parity in this pass: set-up-only rows and a calm dot
 (`notSetUp`), an expired Claude token keeps its numbers, `agy` looked for
-where Baby Menu looks, the weekly reset in the footnote, and a launch log.
+where Baby Menu looks, the weekly reset in the footnote, a second ask after
+a one-off connection failure (a TLS failure was seen on this Mac's network
+during the check), and a launch log.
 
 | Widget | Baby Menu item | Usage | Status | Reason |
 | --- | --- | --- | --- | --- |

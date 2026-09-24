@@ -79,30 +79,33 @@ fi
 if [[ -z "$PID" ]]; then
   record T3 FAIL "no usage-bar process after launch"
 else
-  ETIME_S="$(ps -o etimes= -p "$PID" 2>/dev/null | tr -d ' ')"
-  if [[ -z "$ETIME_S" ]]; then
-    # macOS ps has no etimes; derive seconds from etime ([[dd-]hh:]mm:ss).
-    ETIME="$(ps -o etime= -p "$PID" | tr -d ' ')"
-    ETIME_S="$(python3 -c "
-t='$ETIME'; d=0
+  # macOS ps has no etimes; derive seconds from etime ([[dd-]hh:]mm:ss).
+  uptime_s() {
+    local e; e="$(ps -o etime= -p "$1" 2>/dev/null | tr -d ' ')"
+    [[ -n "$e" ]] || { echo -1; return; }
+    python3 -c "
+import sys
+t=sys.argv[1]; d=0
 if '-' in t: d,t=t.split('-'); d=int(d)
 p=[int(x) for x in t.split(':')]
 while len(p)<3: p.insert(0,0)
-print(d*86400+p[0]*3600+p[1]*60+p[2])")"
-  fi
+print(d*86400+p[0]*3600+p[1]*60+p[2])" "$e"
+  }
+  ETIME_S="$(uptime_s "$PID")"
   if (( ETIME_S < 60 )); then
     WAIT=$((60 - ETIME_S + 2))
     echo "  pid $PID up ${ETIME_S}s; watching ${WAIT}s more"
     sleep "$WAIT"
   fi
-  if kill -0 "$PID" 2>/dev/null; then
+  UP_S="$(uptime_s "$PID")"
+  if kill -0 "$PID" 2>/dev/null && (( UP_S >= 60 )); then
     ETIME="$(ps -o etime= -p "$PID" | tr -d ' ')"
-    echo "  pid $PID running, up $ETIME"
+    echo "  pid $PID running, up $ETIME (${UP_S}s)"
     LAST_LAUNCH="$(grep ' launch ' "$STATE/events.log" 2>/dev/null | tail -1)"
     [[ -n "$LAST_LAUNCH" ]] && echo "  events.log: $LAST_LAUNCH"
-    record T3 PASS "pid $PID up $ETIME"
+    record T3 PASS "pid $PID up ${UP_S}s"
   else
-    record T3 FAIL "pid $PID exited within 60 s of launch"
+    record T3 FAIL "pid $PID not alive 60 s after launch (up ${UP_S}s)"
   fi
 fi
 

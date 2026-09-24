@@ -28,10 +28,28 @@ public enum HTTP {
         }
     }
 
+    /// One GET, asked a second time after a short pause when the first
+    /// attempt got no answer at all (a TLS or connection failure, not a
+    /// timeout and not an HTTP status). On this Mac's network such a failure
+    /// is usually a one-off, and without the second ask it would leave that
+    /// source a whole poll older (seen 2026-09-25: "A TLS error caused the
+    /// secure connection to fail" on one read, fine on the next).
     public static func get(
         _ url: URL,
         headers: [String: String],
-        timeout: TimeInterval = 10
+        timeout: TimeInterval = 10,
+        retryPause: TimeInterval = 1.5
+    ) -> Result<Data, Failure> {
+        let first = once(url, headers: headers, timeout: timeout)
+        guard case let .failure(.network(reason)) = first, reason != "timeout" else { return first }
+        Thread.sleep(forTimeInterval: retryPause)
+        return once(url, headers: headers, timeout: timeout)
+    }
+
+    private static func once(
+        _ url: URL,
+        headers: [String: String],
+        timeout: TimeInterval
     ) -> Result<Data, Failure> {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"

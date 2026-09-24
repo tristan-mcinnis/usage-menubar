@@ -123,6 +123,17 @@ final class AdoptionTests: XCTestCase {
                        "with nothing installed the default user location is named")
     }
 
+    // MARK: - One more ask after a connection failure
+
+    /// Port 9 on loopback refuses the connection at once: a network failure
+    /// with no answer, which is asked a second time after the pause.
+    func testAConnectionFailureIsAskedTwice() {
+        let start = Date()
+        let result = HTTP.get(URL(string: "http://127.0.0.1:9/")!, headers: [:], timeout: 3, retryPause: 0.4)
+        guard case .failure(.network) = result else { return XCTFail("a refused connection is a network failure: \(result)") }
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(start), 0.4, "the second ask waits for the pause")
+    }
+
     // MARK: - Event log
 
     func testTheEventLogKeepsTheNewestLines() throws {
