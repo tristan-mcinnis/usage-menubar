@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var settingsMenu = SettingsMenu(showSettings: { [weak self] in self?.openSettings() })
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let build = Bundle.main.object(forInfoDictionaryKey: "UsageBuiltFromCommit") as? String ?? "unstamped"
+        EventLog.append("launch pid=\(ProcessInfo.processInfo.processIdentifier) build=\(build)")
         UserDefaults.standard.register(defaults: [
             // Dark is the house default; light is first-class.
             AppearancePreference.key: AppearancePreference.dark.rawValue,
@@ -31,7 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.panel.close()
             self?.openSettings()
         }
-        model.onQuit = { NSApp.terminate(nil) }
+        model.onQuit = {
+            EventLog.append("quit from panel")
+            NSApp.terminate(nil)
+        }
         model.onSnapshotChange = { [weak self] snapshot in
             self?.updateStatusItem(snapshot)
             self?.panel.refit(relativeTo: self?.statusItem.button)
@@ -44,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Any AppKit shutdown: ⌘Q, the Quit row, logout, or a polite quit
+        // from outside. A kill or a crash never reaches here.
+        EventLog.append("terminate pid=\(ProcessInfo.processInfo.processIdentifier)")
         if let wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
             self.wakeObserver = nil

@@ -13,12 +13,21 @@ public struct ToolPaths: Equatable, Sendable {
 
     public init(
         security: String = "/usr/bin/security",
-        agy: String = NSHomeDirectory() + "/.local/bin/agy",
+        agy: String = ToolPaths.findAgy(),
         home: String = NSHomeDirectory()
     ) {
         self.security = security
         self.agy = agy
         self.home = home
+    }
+
+    /// Where `agy` is installed: the first of its known install locations
+    /// that holds an executable (the same list Baby Menu checks, plus
+    /// Homebrew), else the default user location, which then reads as not
+    /// installed.
+    public static func findAgy(home: String = NSHomeDirectory()) -> String {
+        let candidates = [home + "/.local/bin/agy", "/usr/local/bin/agy", "/opt/homebrew/bin/agy"]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) } ?? candidates[0]
     }
 
     public static let installed = ToolPaths()
@@ -87,15 +96,38 @@ public enum ClaudeCredential {
     /// re-read, so a poll does not re-read the token or re-prompt a denial every
     /// time.
     public static func read(tools: ToolPaths, user: String = NSUserName()) -> OAuthCredential? {
+        if case let .valid(credential) = lookup(tools: tools, user: user) { return credential }
+        return nil
+    }
+
+    /// What the keychain holds for Claude Code right now.
+    public enum Lookup: Equatable, Sendable {
+        /// A token that has not expired.
+        case valid(OAuthCredential)
+        /// Only expired tokens. Claude Code renews the token itself the next
+        /// time it runs; Usage never does, because a renewal rotates the
+        /// refresh token Claude Code keeps.
+        case expired
+        /// No readable credential at all.
+        case missing
+    }
+
+    /// Read the keychain and say whether the credential is usable, expired,
+    /// or absent, so an expired token (a quiet night) is not reported as
+    /// signed out.
+    public static func lookup(tools: ToolPaths, user: String = NSUserName(), now: Date = Date()) -> Lookup {
+        var sawExpired = false
         for account in [user, nil] {
             let marker = fingerprint(tools: tools, account: account)
-            let credential = caches.resolve(key: Self.accountKey(account), fingerprint: marker, isValid: { !$0.isExpired() }) {
+            let credential = caches.resolve(key: Self.accountKey(account), fingerprint: marker) {
                 guard let raw = secret(tools: tools, account: account) else { return nil }
                 return parse(raw)
             }
-            if let credential { return credential }
+            guard let credential else { continue }
+            if !credential.isExpired(now: now) { return .valid(credential) }
+            sawExpired = true
         }
-        return nil
+        return sawExpired ? .expired : .missing
     }
 
     /// Forget every cached credential (e.g. when a read came back rejected), so

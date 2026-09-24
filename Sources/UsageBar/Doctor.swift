@@ -11,7 +11,9 @@ import UsageBarCore
 /// then uppercase sections with key and value rows at two spaces of indent.
 enum Doctor {
 
-    /// 0 when every source read, 1 when any did not.
+    /// 0 when every source that is set up read, 1 when any did not. A
+    /// source that is not set up here (no tool, no key) is named but is not
+    /// a failure.
     static func run(tools: ToolPaths = .installed) -> Int32 {
         var samples = SampleStore.load(from: SampleStore.defaultPath())
         let now = Date()
@@ -30,7 +32,9 @@ enum Doctor {
             print("")
             print(lane.title.uppercased())
             var rows: [(String, String)] = []
-            for reading in snapshot.readings(in: lane) {
+            // Every source, set up or not: the doctor is where a missing
+            // tool or key is named.
+            for reading in snapshot.readings where reading.provider.lane == lane {
                 switch reading.state {
                 case .ok:
                     let plan = reading.plan.map { " · \(Format.planTitle($0))" } ?? ""
@@ -48,6 +52,8 @@ enum Doctor {
                     rows.append((reading.provider.title, "FAILED: \(reason)"))
                 case let .rateLimited(reason):
                     rows.append((reading.provider.title, "RATE LIMITED: \(reason)"))
+                case let .notSetUp(reason):
+                    rows.append((reading.provider.title, "NOT SET UP: \(reason)"))
                 case .pending:
                     rows.append((reading.provider.title, "not read"))
                 }
@@ -63,7 +69,7 @@ enum Doctor {
             ("codex auth", FileManager.default.fileExists(atPath: CodexCredential.path(tools: tools)) ? "present" : "absent"),
         ])
 
-        return readings.allSatisfy(\.state.isOK) ? 0 : 1
+        return snapshot.shown.allSatisfy(\.state.isOK) ? 0 : 1
     }
 
     private static func block(_ pairs: [(String, String)]) {

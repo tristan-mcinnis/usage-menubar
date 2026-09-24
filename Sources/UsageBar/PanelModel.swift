@@ -112,7 +112,7 @@ final class PanelModel: ObservableObject {
     /// The provider rows, in panel order. Return opens the provider's own
     /// usage page, which is the one thing a number on a panel cannot show.
     var providerActions: [PanelAction] {
-        snapshot.readings.map { reading in
+        snapshot.shown.map { reading in
             PanelAction(id: reading.provider.rawValue, glyph: reading.provider.glyph, title: reading.provider.title) {
                 [weak self] in self?.openUsagePage(reading.provider)
             }
@@ -149,7 +149,7 @@ final class PanelModel: ObservableObject {
 
     /// The keyboard index of a provider's row.
     func selectionIndex(of provider: ProviderID) -> Int {
-        snapshot.readings.firstIndex { $0.provider == provider } ?? 0
+        snapshot.shown.firstIndex { $0.provider == provider } ?? 0
     }
 
     func moveSelection(by delta: Int) {
@@ -244,6 +244,7 @@ final class PanelModel: ObservableObject {
         case let .error(reason): return "Could not refresh: \(reason)"
         case let .rateLimited(reason): return reason
         case .stale: return "\(provider.title) restored"
+        case let .notSetUp(reason): return reason
         case .pending: return "\(provider.title) not read"
         }
     }

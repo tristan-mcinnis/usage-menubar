@@ -42,7 +42,9 @@ sed "s/__VERSION__/$VERSION/g" "$ROOT/Resources/Info.plist" > "$CONTENTS/Info.pl
 # dirty tree is marked, because such a build traces to no commit at all.
 # install.sh refuses a dirty tree; a plain build here is never refused, only
 # marked. This runs before code-signing, so the signature covers the stamp.
-COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+# The full hash, so a check can compare the installed app against
+# `git rev-parse HEAD` exactly (scripts/acceptance.sh, T2).
+COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
 if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]]; then
   COMMIT="$COMMIT-dirty"
 fi

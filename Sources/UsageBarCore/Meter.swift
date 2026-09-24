@@ -151,6 +151,10 @@ public enum ReadState: Equatable, Sendable {
     case stale
     /// The credential is missing or was rejected; the text says which.
     case signIn(String)
+    /// The source is not set up on this Mac: its tool is not installed or it
+    /// has no key. Not a failure, so the panel leaves it off and the header
+    /// does not count it; `--doctor` still names it.
+    case notSetUp(String)
     /// The source could not be reached or answered with something unreadable.
     case error(String)
     /// The source throttled the ask; the text says why and how to wait.
@@ -164,8 +168,24 @@ public enum ReadState: Equatable, Sendable {
     public var reason: String {
         switch self {
         case .ok, .stale: return ""
-        case let .signIn(reason), let .error(reason), let .rateLimited(reason): return reason
+        case let .signIn(reason), let .error(reason), let .rateLimited(reason), let .notSetUp(reason): return reason
         case .pending: return "Reading…"
+        }
+    }
+
+    /// Whether the source is set up on this Mac at all.
+    public var isSetUp: Bool {
+        if case .notSetUp = self { return false }
+        return true
+    }
+
+    /// The last good numbers stop being shown: the account is not valid (a
+    /// sign-in ask) or the source is gone (not set up). Every other failure
+    /// keeps them, marked stale.
+    public var dropsData: Bool {
+        switch self {
+        case .signIn, .notSetUp: return true
+        case .ok, .stale, .error, .rateLimited, .pending: return false
         }
     }
 }
@@ -181,6 +201,7 @@ extension ReadState: Codable {
         case "signIn": self = .signIn(try container.decode(String.self, forKey: .reason))
         case "error": self = .error(try container.decode(String.self, forKey: .reason))
         case "rateLimited": self = .rateLimited(try container.decode(String.self, forKey: .reason))
+        case "notSetUp": self = .notSetUp(try container.decode(String.self, forKey: .reason))
         case "pending": self = .pending
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "unknown ReadState")
@@ -200,6 +221,9 @@ extension ReadState: Codable {
             try container.encode(reason, forKey: .reason)
         case let .rateLimited(reason):
             try container.encode("rateLimited", forKey: .kind)
+            try container.encode(reason, forKey: .reason)
+        case let .notSetUp(reason):
+            try container.encode("notSetUp", forKey: .kind)
             try container.encode(reason, forKey: .reason)
         case .pending: try container.encode("pending", forKey: .kind)
         }
@@ -270,6 +294,7 @@ public struct ProviderReading: Equatable, Sendable, Identifiable, Codable {
         case .ok, .stale: return retainedValue
         case let .signIn(reason), let .error(reason), let .rateLimited(reason):
             return retainedValue.isEmpty ? reason : retainedValue
+        case let .notSetUp(reason): return reason
         case .pending: return "Reading…"
         }
     }
@@ -310,8 +335,15 @@ public struct UsageSnapshot: Equatable, Sendable {
         readAt: nil
     )
 
+    /// The readings the panel draws: every source that is set up on this
+    /// Mac. A source with no tool or no key is not a row and not a failure.
+    public var shown: [ProviderReading] {
+        readings.filter(\.state.isSetUp)
+    }
+
+    /// The panel's rows in one lane, set-up sources only.
     public func readings(in lane: Lane) -> [ProviderReading] {
-        readings.filter { $0.provider.lane == lane }
+        shown.filter { $0.provider.lane == lane }
     }
 
     public func reading(_ provider: ProviderID) -> ProviderReading? {
@@ -322,6 +354,8 @@ public struct UsageSnapshot: Equatable, Sendable {
     public var headline: (text: String, health: Health) { headline(now: Date()) }
 
     public func headline(now: Date) -> (text: String, health: Health) {
+        // A source that is not set up here is not a row, so it is not counted.
+        let readings = shown
         let okCount = readings.filter(\.state.isOK).count
         // Fresh, restored, and transiently degraded rows may all carry a real
         // value. Count what is visible rather than only `.ok`, so a cold launch
@@ -330,7 +364,7 @@ public struct UsageSnapshot: Equatable, Sendable {
             switch reading.state {
             case .ok, .stale: return true
             case .error, .rateLimited: return !reading.meters.isEmpty || reading.plan != nil
-            case .signIn, .pending: return false
+            case .signIn, .pending, .notSetUp: return false
             }
         }.count
         guard let readAt else { return ("Reading sources…", .unknown) }
@@ -404,10 +438,11 @@ extension UsageSnapshot {
     }
 
     /// Carry the last good display data over an attempt that could not refresh.
-    /// A transient failure keeps it; a sign-in ask drops it.
+    /// A transient failure keeps it; a sign-in ask or a source that is no
+    /// longer set up drops it.
     private static func merge(_ attempt: ProviderReading, over previous: ProviderReading?) -> ProviderReading {
         if attempt.state.isOK { return attempt }
-        if case .signIn = attempt.state {
+        if attempt.state.dropsData {
             return ProviderReading(
                 provider: attempt.provider,
                 state: attempt.state,

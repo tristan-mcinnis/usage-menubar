@@ -147,7 +147,7 @@ struct SettingsView: View {
     private var sourcesCard: some View {
         SlateCard(
             section: "Sources",
-            footnote: "Usage keeps no credential. It reads what each tool already stores, and writes balance samples, last-good readings, and rate-limit retry deadlines to ~/Library/Application Support/Usage, never a credential."
+            footnote: "Usage keeps no credential. It reads what each tool already stores, and writes balance samples, last-good readings, rate-limit retry deadlines, and a launch log to ~/Library/Application Support/Usage, never a credential."
         ) {
             SlateRow(
                 title: "Poll interval",

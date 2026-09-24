@@ -59,8 +59,22 @@ public enum ProviderReader {
 
     // MARK: - Subscriptions
 
+    /// The row's words for a Claude token that expired while Claude Code sat
+    /// idle. Claude Code renews it on its next run; the row keeps the last
+    /// numbers with their stale age until then.
+    public static let expiredReason = "Token expired"
+
     static func claude(tools: ToolPaths, now: Date) -> ProviderReading {
-        guard let credential = ClaudeCredential.read(tools: tools) else {
+        let credential: OAuthCredential
+        switch ClaudeCredential.lookup(tools: tools, now: now) {
+        case let .valid(found):
+            credential = found
+        case .expired:
+            // Signed in, but the token lapsed while Claude Code was idle. It
+            // renews the token on its next run; until then the last good
+            // numbers stay on the row, marked stale with their age.
+            return attempt(.claude, state: .error(expiredReason), now: now)
+        case .missing:
             return attempt(.claude, state: .signIn("Sign in to Claude Code"), now: now)
         }
         let headers = ["Authorization": "Bearer \(credential.token)", "anthropic-beta": "oauth-2025-04-20"]
@@ -105,7 +119,7 @@ public enum ProviderReader {
     /// `/usage` is a local CLI command: it makes no model turn.
     static func antigravity(tools: ToolPaths, now: Date) -> ProviderReading {
         guard tools.exists(tools.agy) else {
-            return attempt(.antigravity, state: .signIn("agy not installed"), now: now)
+            return attempt(.antigravity, state: .notSetUp("agy not installed"), now: now)
         }
         let result = Subprocess.run(
             executable: tools.agy,
@@ -129,7 +143,7 @@ public enum ProviderReader {
 
     static func deepseek(tools: ToolPaths, samples: inout SampleStore, now: Date) -> ProviderReading {
         guard let key = APIKey.read(files: APIKey.deepseekFiles(tools: tools), environment: APIKey.deepseekNames, tools: tools) else {
-            return attempt(.deepseek, state: .signIn("No DeepSeek key"), now: now)
+            return attempt(.deepseek, state: .notSetUp("No DeepSeek key"), now: now)
         }
         switch HTTP.get(deepseekBalanceURL, headers: ["Authorization": "Bearer \(key)"]) {
         case let .success(data):
@@ -159,7 +173,7 @@ public enum ProviderReader {
     static func moonshot(tools: ToolPaths, samples: inout SampleStore, now: Date,
                          env: [String: String] = ProcessInfo.processInfo.environment) -> ProviderReading {
         guard let key = APIKey.read(files: APIKey.moonshotFiles(tools: tools), environment: APIKey.moonshotNames, tools: tools) else {
-            return attempt(.moonshot, state: .signIn("No Moonshot key"), now: now)
+            return attempt(.moonshot, state: .notSetUp("No Moonshot key"), now: now)
         }
         let base = (env["MOONSHOT_BASE_URL"]?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 }
             ?? moonshotDefaultBase
@@ -191,7 +205,7 @@ extension ProviderReader {
     /// Spend over the last thirty days, in USD. No balance exists to read.
     static func soniox(tools: ToolPaths, now: Date) -> ProviderReading {
         guard let key = APIKey.read(files: APIKey.sonioxFiles(tools: tools), environment: APIKey.sonioxNames, tools: tools) else {
-            return attempt(.soniox, state: .signIn("No Soniox key"), now: now)
+            return attempt(.soniox, state: .notSetUp("No Soniox key"), now: now)
         }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]

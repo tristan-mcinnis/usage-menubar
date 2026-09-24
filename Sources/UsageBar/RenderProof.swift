@@ -88,10 +88,22 @@ enum RenderProof {
         readAt: now.addingTimeInterval(-120)
     )
 
-    /// One source needs a sign-in and one transient failure keeps its last
-    /// good meter. Built through the production merge so the proof cannot show
-    /// an impossible combination of status and cached data.
+    /// One source needs a sign-in, one transient failure keeps its last good
+    /// meter, an expired Claude token keeps its last numbers, and a source
+    /// with no tool installed is left off. Built through the production merge
+    /// so the proof cannot show an impossible combination of status and
+    /// cached data.
     static let partial = allRead.applying([
+        ProviderReading(
+            provider: .claude,
+            state: .error(ProviderReader.expiredReason),
+            attemptedAt: now.addingTimeInterval(-30)
+        ),
+        ProviderReading(
+            provider: .antigravity,
+            state: .notSetUp("agy not installed"),
+            attemptedAt: now.addingTimeInterval(-30)
+        ),
         ProviderReading(
             provider: .codex,
             state: .signIn("Sign in to Codex"),

@@ -78,6 +78,7 @@ struct ProviderRow: View {
         case let .signIn(reason), let .error(reason), let .rateLimited(reason):
             if let stale = reading.staleNote(now: now) { return "\(reason) · \(stale)" }
             return reason
+        case let .notSetUp(reason): return reason
         case .pending: return "Reading…"
         }
     }
@@ -85,7 +86,7 @@ struct ProviderRow: View {
     private var detailIsProblem: Bool {
         switch reading.state {
         case .signIn, .error, .rateLimited: return true
-        case .ok, .stale, .pending: return false
+        case .ok, .stale, .pending, .notSetUp: return false
         }
     }
 
@@ -95,7 +96,7 @@ struct ProviderRow: View {
     /// supersedes the last good values, so it draws no number.
     private var trailing: String {
         switch reading.state {
-        case .pending, .signIn: return ""
+        case .pending, .signIn, .notSetUp: return ""
         case .ok, .stale, .error, .rateLimited: return reading.retainedValue
         }
     }
@@ -372,7 +373,8 @@ struct MenuBarPanelView: View {
                 .padding(.top, House.Spacing.xxs)
             }
 
-            ForEach(Lane.allCases, id: \.rawValue) { lane in
+            // A lane with no set-up source draws no label.
+            ForEach(Lane.allCases.filter { !model.snapshot.readings(in: $0).isEmpty }, id: \.rawValue) { lane in
                 PanelSectionLabel(text: lane.title)
                 ForEach(model.snapshot.readings(in: lane)) { reading in
                     provider(reading)
@@ -427,16 +429,38 @@ struct MenuBarPanelView: View {
 
     static func footnote(for reading: ProviderReading, shown: [Meter], now: Date) -> String? {
         var parts: [String] = []
-        // The soonest reset among the windows that have used anything.
-        if let next = shown.filter({ ($0.percentUsed ?? 0) > 0 }).compactMap(\.resetsAt).min() {
-            let owner = shown.first { $0.resetsAt == next }?.label.lowercased() ?? "window"
-            parts.append("\(owner) resets in \(Format.countdown(to: next, from: now))")
+        // The two soonest distinct resets among the windows that have used
+        // anything: a session and its week, as Baby Menu showed each window's
+        // reset. Windows that reset together (a week and its model-scoped
+        // week) are named once, by the first of them.
+        let resets = Self.resets(of: shown)
+        if let first = resets.first {
+            if resets.count > 1 {
+                // Short form, so both fit in the 300 px column.
+                parts.append("\(first.owner) resets \(Format.countdown(to: first.at, from: now))"
+                    + " · \(resets[1].owner) \(Format.countdown(to: resets[1].at, from: now))")
+            } else {
+                parts.append("\(first.owner) resets in \(Format.countdown(to: first.at, from: now))")
+            }
         } else if let balance = shown.first(where: \.isBalance), let detail = balance.detail(now: now) {
             parts.append(detail)
         }
         let folded = reading.meters.count - shown.count
         if folded > 0 { parts.append("\(folded) more") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Distinct reset times of the windows that have used anything, soonest
+    /// first, each named by the first window (in source order) that resets
+    /// then. Resets within a minute of each other count as one.
+    static func resets(of meters: [Meter]) -> [(owner: String, at: Date)] {
+        var found: [(owner: String, at: Date)] = []
+        for meter in meters where (meter.percentUsed ?? 0) > 0 {
+            guard let at = meter.resetsAt else { continue }
+            if found.contains(where: { abs($0.at.timeIntervalSince(at)) < 60 }) { continue }
+            found.append((meter.label.lowercased(), at))
+        }
+        return found.sorted { $0.at < $1.at }
     }
 
     // MARK: Footer

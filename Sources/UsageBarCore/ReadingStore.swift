@@ -26,7 +26,7 @@ public struct ReadingStore: Equatable, Sendable {
         var current: [ProviderID: ProviderReading] = [:]
         for reading in readings { current[reading.provider] = reading }
         for reading in snapshot.readings {
-            if case .signIn = reading.state {
+            if reading.state.dropsData {
                 current[reading.provider] = nil
             } else if Self.carriesData(reading) {
                 current[reading.provider] = Self.goodReading(of: reading)
