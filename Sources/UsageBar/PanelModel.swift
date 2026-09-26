@@ -489,6 +489,9 @@ enum NetworkPath {
         func finish() {
             guard let continuation else { return }
             self.continuation = nil
+            // The handler holds this object and this object holds the
+            // monitor: drop the handler so the pair is freed after a wake.
+            monitor.pathUpdateHandler = nil
             monitor.cancel()
             continuation.resume()
         }
