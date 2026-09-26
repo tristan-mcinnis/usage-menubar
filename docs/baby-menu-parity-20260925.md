@@ -79,7 +79,6 @@ during the check), and a launch log.
   the dot was red every poll for Antigravity, whose tool is not installed.
   Both are fixed; `events.log` now records every launch and quit, so the
   next disappearance is explainable.
-- Idle backoff: `PanelModel` computes a longer interval for an unopened
-  panel, but the repeating timer takes its interval only when armed (launch,
-  panel open, a settings change), so in practice it polls every 5 minutes.
-  Left as is: freshness under 15 minutes is the adoption bar.
+- Idle backoff: fixed 2026-09-26. Each timer fire re-arms the timer when the
+  backoff moved the interval, and the ceiling is 10 minutes, so an unopened
+  panel polls every 10 minutes and freshness stays under the 15-minute bar.

@@ -40,7 +40,9 @@ Last-good readings are hydrated at launch, so the panel shows the numbers it
 last saw before the first poll returns. Opening the panel never waits on a read:
 it draws the last good numbers at once, and when they are older than one poll
 interval it starts a read behind the panel. The background timer, a manual ⌘R,
-and a system wake also read. A source that answers 429 is skipped until its persisted
+and a system wake also read. A panel nobody opens for two hours polls every ten
+minutes instead of every five. A wake read waits up to 30 s for the network, and
+runs after a read already in flight rather than being dropped. A source that answers 429 is skipped until its persisted
 retry deadline, and the last good numbers stay visible with a stale/error age.
 
 ## The panel

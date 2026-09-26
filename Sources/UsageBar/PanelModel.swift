@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import Network
 import UsageBarCore
 
 /// One selectable row in the panel: a provider, or an action.
@@ -34,7 +35,8 @@ final class PanelModel: ObservableObject {
     // MARK: Published state
 
     @Published private(set) var snapshot: UsageSnapshot
-    @Published private(set) var isReading = false
+    /// Set by the read paths only; tests set it to stand for a read in flight.
+    @Published var isReading = false
     @Published var selection: Int = 0
     @Published var confirmation: Confirmation?
 
@@ -57,9 +59,17 @@ final class PanelModel: ObservableObject {
     private var lastOpenedAt = Date()
     /// The clock, injected so the idle backoff is tested without waiting.
     var now: () -> Date = { Date() }
-    /// The read a stale open kicks off behind the panel. It is the ordinary
-    /// poll; a test replaces it so that opening a panel reads no provider.
+    /// The read behind the panel: a stale open, a timer fire, and a wake all
+    /// start it. It is the ordinary poll; a test replaces it so that nothing
+    /// here reads a provider.
     lazy var backgroundRefresh: () -> Void = { [weak self] in self?.poll() }
+    /// Returns once the Mac has a usable network path, or after a bound. A
+    /// test replaces it to decide when the network comes back.
+    var waitForNetwork: () async -> Void = { await NetworkPath.usable(within: PanelModel.wakeNetworkWait) }
+    /// A read asked for while another was running. It runs once that read
+    /// ends, so the wake read is never dropped behind the overdue timer's.
+    private var readQueued = false
+    private var wakeRead: Task<Void, Never>?
 
     /// Raised while the panel is on screen.
     var isPanelOpen = false
@@ -80,10 +90,13 @@ final class PanelModel: ObservableObject {
     /// morning, so numbers nobody has looked at since breakfast stop costing
     /// five network calls and a CLI launch every five minutes.
     static let idleThreshold: TimeInterval = 2 * 60 * 60
-    /// The longest gap between polls, however long nobody looks. Half an hour
-    /// keeps the backoff bounded: at worst one open finds the numbers half an
-    /// hour old, says so, and reads again behind the panel.
-    static let idlePollCeiling: TimeInterval = 30 * 60
+    /// The longest gap between polls, however long nobody looks. Ten minutes
+    /// plus the timer's 15 % tolerance and one read stays under the 15-minute
+    /// freshness bar `scripts/acceptance.sh` (T4) holds every source to, and
+    /// still halves the calls of the default five-minute cadence.
+    static let idlePollCeiling: TimeInterval = 10 * 60
+    /// How long a wake read waits for the network before it reads anyway.
+    static let wakeNetworkWait: TimeInterval = 30
     /// The share of the interval macOS may slide a poll wakeup by, so it can
     /// batch this timer with others instead of waking the CPU for it alone.
     /// A background poll owes nobody a particular second.
@@ -205,7 +218,7 @@ final class PanelModel: ObservableObject {
                 let wait = retries.nextAllowedAt(provider, now: now)
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.generation == gen else { return }
-                    self.isReading = false
+                    self.readFinished()
                     self.confirmation = Confirmation(
                         ok: false,
                         text: "\(provider.title) is rate limited — retry \(wait.map { Format.countdown(to: $0, from: now) } ?? "later")"
@@ -230,9 +243,9 @@ final class PanelModel: ObservableObject {
             let outcome = reading.state
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.generation == gen else { return }
-                self.isReading = false
                 self.apply(self.snapshot.applying([reading]))
                 self.confirmation = Confirmation(ok: outcome.isOK, text: Self.refreshNote(provider, outcome))
+                self.readFinished()
             }
         }
     }
@@ -307,13 +320,51 @@ final class PanelModel: ObservableObject {
         pollTimer?.invalidate()
         let interval = pollInterval
         let timer = Timer(timeInterval: interval, repeats: true) { _ in
-            MainActor.assumeIsolated { [weak self] in self?.poll() }
+            MainActor.assumeIsolated { [weak self] in self?.pollTimerFired() }
         }
         // Let macOS batch this wakeup with whatever else wakes near it rather
         // than waking the CPU for the poll alone.
         timer.tolerance = interval * Self.pollToleranceFraction
         RunLoop.main.add(timer, forMode: .common)
         pollTimer = timer
+    }
+
+    /// One timer fire: read, then re-arm when the idle backoff has moved the
+    /// interval. A repeating timer keeps the interval it was armed with, so
+    /// without this an unopened panel never backed off.
+    func pollTimerFired() {
+        backgroundRefresh()
+        if let armed = pollTimer?.timeInterval, abs(armed - pollInterval) > 0.5 {
+            schedulePoll()
+        }
+    }
+
+    /// The Mac woke. The overdue timer may already be reading, before the
+    /// network is back; this read waits for a usable path (at most
+    /// `wakeNetworkWait`) and, if a read is still running then, runs right
+    /// after it instead of being dropped.
+    func systemDidWake() {
+        wakeRead?.cancel()
+        wakeRead = Task { [weak self] in
+            guard let wait = self?.waitForNetwork else { return }
+            await wait()
+            guard !Task.isCancelled else { return }
+            self?.readWhenIdle()
+        }
+    }
+
+    /// Read now, or once the read in flight ends.
+    func readWhenIdle() {
+        if isReading { readQueued = true } else { backgroundRefresh() }
+    }
+
+    /// A read ended: clear the flag and run a read that was asked for meanwhile.
+    func readFinished() {
+        isReading = false
+        if readQueued {
+            readQueued = false
+            backgroundRefresh()
+        }
     }
 
     /// Called when the panel opens. Opening stays instant and free: it draws
@@ -371,8 +422,8 @@ final class PanelModel: ObservableObject {
             try? store.save(to: readingsPath)
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.generation == generation else { return }
-                self.isReading = false
                 self.apply(self.snapshot.applying(attempts))
+                self.readFinished()
             }
         }
     }
@@ -406,5 +457,40 @@ final class PanelModel: ObservableObject {
     func override(snapshot: UsageSnapshot) {
         self.snapshot = snapshot
         self.isReading = false
+    }
+}
+
+/// Whether the Mac has a usable network path, for the wake read.
+enum NetworkPath {
+    /// Returns when a path is satisfied, or after `seconds`, whichever is first.
+    static func usable(within seconds: TimeInterval) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let monitor = NWPathMonitor()
+            let queue = DispatchQueue(label: "com.tristan.usage-menubar.path")
+            let once = Once(continuation, monitor)
+            monitor.pathUpdateHandler = { path in
+                if path.status == .satisfied { once.finish() }
+            }
+            monitor.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + seconds) { once.finish() }
+        }
+    }
+
+    /// Resumes the wait once. Touched only on the monitor's serial queue.
+    private final class Once: @unchecked Sendable {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private let monitor: NWPathMonitor
+
+        init(_ continuation: CheckedContinuation<Void, Never>, _ monitor: NWPathMonitor) {
+            self.continuation = continuation
+            self.monitor = monitor
+        }
+
+        func finish() {
+            guard let continuation else { return }
+            self.continuation = nil
+            monitor.cancel()
+            continuation.resume()
+        }
     }
 }

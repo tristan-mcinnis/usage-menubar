@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         wakeObserver = center.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.model.poll() }
+            MainActor.assumeIsolated { self?.model.systemDidWake() }
         }
     }
 

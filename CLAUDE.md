@@ -99,12 +99,15 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
   restores the configured cadence at once, and a stale open starts a read
   behind the panel. `backedOffInterval` and `isStale` are pure, and the clock
   is injected (`now`), so the decision is tested without waiting. Memory and
-  Local Models carry the same constants and the same rule. Known limit
-  (2026-09-25): the repeating timer takes its interval when it is armed
-  (launch, panel open, a settings change), so an unopened panel keeps the
-  configured cadence in practice. That keeps every number under 15 minutes
-  old, which `scripts/acceptance.sh` (T4) checks; make the backoff re-arm
-  only together with a ceiling that keeps T4 true.
+  Local Models carry the same constants and the same rule. A repeating timer
+  keeps the interval it was armed with, so `pollTimerFired` re-arms it when
+  the backoff has moved the interval. The ceiling is 10 minutes: with the
+  tolerance and one read it stays under the 15 minutes `scripts/acceptance.sh`
+  (T4) allows, and a test holds that sum.
+- A wake read waits for a usable network path (`NetworkPath`, at most
+  `wakeNetworkWait`), and a read asked for while one runs is queued once and
+  runs when that read ends (`readWhenIdle`, `readFinished`). The overdue timer
+  may read before the network is back; the wake read then corrects it.
 - `scripts/acceptance.sh` is the adoption check against Baby Menu: build,
   tests, installed build equals HEAD, process alive 60 s, every set-up source
   fresh, two sources matched to ground truth, and the parity table in

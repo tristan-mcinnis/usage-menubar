@@ -34,8 +34,17 @@ final class PollBackoffTests: XCTestCase {
     }
 
     func testTheIntervalDoublesForEveryIdleThresholdPassed() {
+        XCTAssertEqual(PanelModel.backedOffInterval(base: 60, idleFor: PanelModel.idleThreshold), 120)
+        XCTAssertEqual(PanelModel.backedOffInterval(base: 60, idleFor: 2 * PanelModel.idleThreshold), 240)
         XCTAssertEqual(PanelModel.backedOffInterval(base: 300, idleFor: PanelModel.idleThreshold), 600)
-        XCTAssertEqual(PanelModel.backedOffInterval(base: 300, idleFor: 2 * PanelModel.idleThreshold), 1200)
+    }
+
+    /// acceptance.sh (T4) wants every number under 15 minutes old. The
+    /// longest backed-off gap, stretched by the timer's tolerance, plus a
+    /// minute for the read itself, must stay under that.
+    func testTheCeilingKeepsEveryNumberUnderFifteenMinutesOld() {
+        let worst = PanelModel.idlePollCeiling * (1 + PanelModel.pollToleranceFraction) + 60
+        XCTAssertLessThan(worst, 15 * 60)
     }
 
     func testTheIntervalStopsAtTheCeiling() {
@@ -93,6 +102,62 @@ final class PollBackoffTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertGreaterThan(scheduled.tolerance, 0)
+    }
+
+    /// The repeating timer keeps the interval it was armed with. A fire after
+    /// the idle threshold must re-arm it at the backed-off interval, or an
+    /// unopened panel never backs off at all.
+    func testATimerFireAfterTheIdleThresholdReArmsTheLongerInterval() throws {
+        let launch = Date()
+        var clock = launch
+        let model = makeModel(now: { clock })
+        model.schedulePoll()
+        XCTAssertEqual(try XCTUnwrap(model.scheduledPoll).interval, model.baseInterval, accuracy: 0.001)
+
+        clock = launch.addingTimeInterval(PanelModel.idleThreshold + 1)
+        model.pollTimerFired()
+        XCTAssertEqual(refreshCount, 1)
+        XCTAssertEqual(try XCTUnwrap(model.scheduledPoll).interval, PanelModel.idlePollCeiling, accuracy: 0.001)
+    }
+
+    func testATimerFireInsideTheThresholdKeepsTheTimer() throws {
+        let model = makeModel()
+        model.schedulePoll()
+        let before = try XCTUnwrap(model.scheduledPoll).interval
+        model.pollTimerFired()
+        XCTAssertEqual(refreshCount, 1)
+        XCTAssertEqual(try XCTUnwrap(model.scheduledPoll).interval, before, accuracy: 0.001)
+    }
+
+    /// On wake the overdue timer may already be reading before the network is
+    /// back. The wake read waits for the network, then runs after that read
+    /// instead of being dropped.
+    func testTheWakeReadWaitsForTheNetworkAndQueuesBehindARunningRead() async {
+        let model = makeModel()
+        let (gate, open) = AsyncStream<Void>.makeStream()
+        model.waitForNetwork = { for await _ in gate { return } }
+        model.isReading = true              // the overdue timer's read, in flight
+
+        model.systemDidWake()
+        await Task.yield()
+        XCTAssertEqual(refreshCount, 0, "no read before the network is back")
+
+        open.yield()
+        for _ in 0..<50 where refreshCount == 0 { await Task.yield() }
+        XCTAssertEqual(refreshCount, 0, "a read is running: the wake read waits for it, never doubles it")
+
+        model.readFinished()
+        XCTAssertEqual(refreshCount, 1, "the queued wake read runs once the first read ends")
+        model.readFinished()
+        XCTAssertEqual(refreshCount, 1, "and only once")
+    }
+
+    func testAWakeWithNoReadRunningReadsOnceTheNetworkIsBack() async {
+        let model = makeModel()
+        model.waitForNetwork = {}
+        model.systemDidWake()
+        for _ in 0..<50 where refreshCount == 0 { await Task.yield() }
+        XCTAssertEqual(refreshCount, 1)
     }
 
     func testOpeningAStalePanelKicksABackgroundRefresh() {
