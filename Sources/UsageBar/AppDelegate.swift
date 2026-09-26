@@ -59,8 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Refresh when the Mac wakes from sleep, so a long night of closed lid
-    /// turns into a fresh set of numbers rather than a stale one. Opening the
-    /// panel never fetches. The observer is owned here and removed on
+    /// turns into a fresh set of numbers rather than a stale one, even if
+    /// the panel is never opened. The observer is owned here and removed on
     /// termination.
     private func observeSystemWake() {
         let center = NSWorkspace.shared.notificationCenter

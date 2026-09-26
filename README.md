@@ -37,9 +37,10 @@ pids, never a credential or a token. A `launch` line with no `terminate` after
 it means the process was killed or crashed.
 
 Last-good readings are hydrated at launch, so the panel shows the numbers it
-last saw before the first poll returns. Opening the panel never fetches (it is
-instant and free); a stale read is freshened by the background timer, a manual
-⌘R, or a system wake. A source that answers 429 is skipped until its persisted
+last saw before the first poll returns. Opening the panel never waits on a read:
+it draws the last good numbers at once, and when they are older than one poll
+interval it starts a read behind the panel. The background timer, a manual ⌘R,
+and a system wake also read. A source that answers 429 is skipped until its persisted
 retry deadline, and the last good numbers stay visible with a stale/error age.
 
 ## The panel

@@ -151,7 +151,7 @@ struct SettingsView: View {
         ) {
             SlateRow(
                 title: "Poll interval",
-                detail: "How often every source is asked. Opening the panel is instant and never fetches; the numbers it shows are the last good ones."
+                detail: "How often every source is asked. Opening the panel shows the last numbers at once, and reads again if they are older."
             ) {
                 SlateSegmented(
                     options: Self.intervals.map { ($0.value, $0.title) },
