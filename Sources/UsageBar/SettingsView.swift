@@ -139,7 +139,9 @@ struct SettingsView: View {
                     options: [("none", "None")] + ProviderID.subscriptions.map { ($0.rawValue, Self.shortTitle($0)) },
                     selection: $headlineProvider
                 )
-                .frame(width: 320)
+                // Each segment takes its label's width, so "Antigravity" is
+                // never cut to "Antigra…" by an equal split.
+                .fixedSize()
             }
         }
     }
@@ -151,7 +153,7 @@ struct SettingsView: View {
         ) {
             SlateRow(
                 title: "Poll interval",
-                detail: "How often every source is asked. Opening the panel shows the last numbers at once, and reads again if they are older."
+                detail: "How often every source is asked. Opening the panel shows the last numbers at once, and reads again if they are older than one interval."
             ) {
                 SlateSegmented(
                     options: Self.intervals.map { ($0.value, $0.title) },
