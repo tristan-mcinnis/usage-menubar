@@ -106,6 +106,20 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(store.samples["k"]?.count, 1)
     }
 
+    /// A balance that sits still keeps two samples, not one per poll, and the
+    /// last time it was seen still holds the peak in the window.
+    func testAStillBalanceKeepsTwoSamplesAndItsPeak() {
+        var store = SampleStore()
+        let poll: TimeInterval = 5 * 60
+        for step in 0...(20 * 86_400 / Int(poll)) {
+            _ = store.record(100, for: "k", at: now.addingTimeInterval(Double(step) * poll))
+        }
+        XCTAssertEqual(store.samples["k"]?.count, 2)
+        // Day 31: the first sighting has left the window, the last has not.
+        let spent = store.record(50, for: "k", at: now.addingTimeInterval(31 * 86_400))
+        XCTAssertEqual(spent ?? -1, 50, accuracy: 0.001)
+    }
+
     func testSampleStoreRoundTrip() throws {
         let path = NSTemporaryDirectory() + "usage-bar-tests-\(UUID().uuidString)/samples.json"
         var store = SampleStore()
