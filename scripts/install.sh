@@ -44,8 +44,10 @@ set -euo pipefail
 
 APP_NAME="Usage"
 EXEC_NAME="usage-bar"
-BUNDLE_ID="com.tristan.usage-menubar"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The bundle ID has one home, Resources/Info.plist; change it there to build
+# under your own ID.
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$ROOT/Resources/Info.plist")"
 
 INSTALL_BUILD=1
 INSTALL_LAUNCH=0
