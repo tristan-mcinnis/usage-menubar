@@ -598,9 +598,13 @@ final class MenuBarPanelController {
 
     private func startKeyMonitor() {
         guard keyMonitor == nil else { return }
+        // Only the key's Sendable parts cross into the main actor; the event
+        // itself stays in the monitor, which returns it or swallows it.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.isVisible else { return event }
-            return MainActor.assumeIsolated { self.handle(event) }
+            let key = KeyPress(event)
+            let consumed = MainActor.assumeIsolated { self.handle(key) }
+            return consumed ? nil : event
         }
     }
 
@@ -611,32 +615,33 @@ final class MenuBarPanelController {
 
     /// Arrows and Return drive the rows; Escape closes. The command chords
     /// are handled here rather than as SwiftUI shortcuts so they work
-    /// wherever focus is.
-    private func handle(_ event: NSEvent) -> NSEvent? {
-        if event.modifierFlags.contains(.command) {
-            switch event.charactersIgnoringModifiers?.lowercased() {
-            case "r": model.refresh(); return nil
-            case ",": model.onOpenSettings(); return nil
-            case "q": model.onQuit(); return nil
-            default: return event
+    /// wherever focus is. True when the key was handled and must not reach
+    /// the focused view.
+    private func handle(_ key: KeyPress) -> Bool {
+        if key.flags.contains(.command) {
+            switch key.characters?.lowercased() {
+            case "r": model.refresh(); return true
+            case ",": model.onOpenSettings(); return true
+            case "q": model.onQuit(); return true
+            default: return false
             }
         }
 
-        switch event.keyCode {
+        switch key.keyCode {
         case 125: // down
             model.moveSelection(by: 1)
-            return nil
+            return true
         case 126: // up
             model.moveSelection(by: -1)
-            return nil
+            return true
         case 36, 76: // return, enter
             model.runSelection()
-            return nil
+            return true
         case 53: // esc
             model.escape()
-            return nil
+            return true
         default:
-            return event
+            return false
         }
     }
 
@@ -647,5 +652,19 @@ final class MenuBarPanelController {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.close() }
         }
+    }
+}
+
+/// The parts of a key-down the panel reads. `NSEvent` is not Sendable, so the
+/// monitor copies these out before it hops onto the main actor.
+private struct KeyPress: Sendable {
+    let keyCode: UInt16
+    let flags: NSEvent.ModifierFlags
+    let characters: String?
+
+    init(_ event: NSEvent) {
+        keyCode = event.keyCode
+        flags = event.modifierFlags
+        characters = event.charactersIgnoringModifiers
     }
 }
