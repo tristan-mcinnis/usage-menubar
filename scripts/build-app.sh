@@ -61,6 +61,9 @@ else
 fi
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 
+# The license and notices travel with the app.
+cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$CONTENTS/Resources/"
+
 if [[ -z "${SIGN_IDENTITY:-}" ]]; then
   SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
     | grep -o '"Apple Development: [^"]*"' | head -1 | tr -d '"')
