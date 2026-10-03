@@ -1,6 +1,6 @@
 # Privacy
 
-Usage reads six sources and writes three small files. Each source is read with
+Usage reads six sources and writes four small files. Each source is read with
 a credential its own tool already keeps on this Mac: the Claude Code item in
 the login keychain, `~/.codex/auth.json`, the `agy` CLI's own login, and the
 DeepSeek, Moonshot, and Soniox key files (`~/.config/secrets.env` and the
@@ -17,11 +17,16 @@ provider's own usage or balance endpoint: `api.anthropic.com`,
 local `agy` CLI, so it makes no network call by Usage. There is no telemetry,
 no crash reporting, no update check, and no other host.
 
-The three files it writes live at `~/Library/Application Support/Usage/` and
-hold only amounts, plan names, and dates, never a credential or a token:
+The four files it writes live at `~/Library/Application Support/Usage/` and
+hold only amounts, plan names, dates, and process IDs, never a credential or a token:
 `samples.json` (prepaid-balance amounts and timestamps, kept thirty days, so a
 balance can be drawn as spend since its peak), `readings.json` (last-good
-meters and plan per source, presented stale at launch), and `retries.json`
-(per-provider rate-limit retry deadlines). Its `UserDefaults` hold the
+meters and plan per source, presented stale at launch), `retries.json`
+(per-provider rate-limit retry deadlines), and `events.log` (one line per
+launch and quit, with its process ID). Its `UserDefaults` hold the
 appearance choice, the poll interval, and which provider the status item
 shows.
+
+The Claude Code and Codex endpoints are not documented for public use by
+Anthropic or OpenAI. They may change or stop working; the README's Privacy
+section says more.
