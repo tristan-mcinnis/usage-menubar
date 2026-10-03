@@ -98,7 +98,7 @@ $NEW_LINES
 
 ## First open
 
-$APP_NAME is not notarized. It is a free project, and I do not pay for an Apple Developer ID, so macOS blocks the first open. Each release is signed ad hoc. Because of that, macOS may ask again for permissions such as Accessibility or Microphone after an update.
+$APP_NAME is not notarized. It is a free project, and I do not pay for an Apple Developer ID, so macOS blocks the first open. Each release is signed ad hoc. Because of that, macOS may ask again for access after an update, such as the keychain prompt below.
 
 1. Open the \`.dmg\` and drag $APP_NAME to Applications.
 2. Open $APP_NAME once. macOS will block it. This is expected.

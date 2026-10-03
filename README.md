@@ -80,7 +80,9 @@ Or do it in Terminal:
 xattr -dr com.apple.quarantine "/Applications/Usage.app"
 ```
 
-Usage is not notarized. It is a free project, and I do not pay for an Apple Developer ID, so macOS blocks the first open. Each release is signed ad hoc. Because of that, macOS may ask again for permissions such as Accessibility or Microphone after an update.
+Usage is not notarized. It is a free project, and I do not pay for an Apple Developer ID, so macOS blocks the first open. Each release is signed ad hoc. Because of that, macOS may ask again for access after an update, such as the keychain prompt below.
+
+On first launch macOS asks whether Usage may read the "Claude Code-credentials" keychain item. Choose Always Allow, or the Claude row stays at "Sign in".
 
 Check the download against `SHA256SUMS` on the release page:
 
