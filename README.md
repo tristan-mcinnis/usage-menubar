@@ -160,7 +160,7 @@ shows. See also [PRIVACY.md](PRIVACY.md).
 ```sh
 swift build && swift test          # the app, and the parsers against fixture payloads
 bash scripts/test-install.sh       # the installer, against temp fixtures; touches no real install
-sh tests/scrub.sh                  # no personal paths or key material in tracked files
+sh Tests/scrub.sh                  # no personal paths or key material in tracked files
 ./scripts/build-app.sh             # dist/Usage.app, signed
 ```
 
