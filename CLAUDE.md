@@ -112,6 +112,11 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
   tests, installed build equals HEAD, process alive 60 s, every set-up source
   fresh, two sources matched to ground truth, and the parity table in
   `docs/baby-menu-parity-20260925.md`.
+- `scripts/make-dmg.sh` is the one way to package a release: ad-hoc build,
+  `Usage-<version>-macos-arm64.dmg`, `SHA256SUMS`, `RELEASE_NOTES.md`, then a
+  read-only mount check. It never launches the app and never publishes; it
+  prints the `gh release create --draft` command for the owner to run. There is
+  no Developer ID, so releases are not notarized and the README says so.
 - Verify with the render proof and `--doctor`, never by launching the app. A
   claim about how a surface looks is backed by a PNG somebody looked at.
 

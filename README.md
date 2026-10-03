@@ -66,7 +66,29 @@ tight, and when it resets, without opening a browser tab per provider.
 
 ## Install
 
-There is no prebuilt download yet. Build and install from source:
+### Download
+
+Get the latest `.dmg` from the [Releases page](https://github.com/tristan-mcinnis/usage-menubar/releases/latest). It is for Apple Silicon Macs.
+
+1. Open the `.dmg` and drag Usage to Applications.
+2. Open Usage once. macOS will block it. This is expected.
+3. Go to System Settings > Privacy & Security, scroll down, and click Open Anyway.
+
+Or do it in Terminal:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/Usage.app"
+```
+
+Usage is not notarized. It is a free project, and I do not pay for an Apple Developer ID, so macOS blocks the first open. Each release is signed ad hoc. Because of that, macOS may ask again for permissions such as Accessibility or Microphone after an update.
+
+Check the download against `SHA256SUMS` on the release page:
+
+```sh
+shasum -a 256 -c SHA256SUMS
+```
+
+### Build from source
 
 ```sh
 git clone https://github.com/tristan-mcinnis/usage-menubar.git
@@ -162,6 +184,7 @@ swift build && swift test          # the app, and the parsers against fixture pa
 bash scripts/test-install.sh       # the installer, against temp fixtures; touches no real install
 sh Tests/scrub.sh                  # no personal paths or key material in tracked files
 ./scripts/build-app.sh             # dist/Usage.app, signed
+./scripts/make-dmg.sh              # release DMG, SHA256SUMS and notes in dist/release (ad hoc)
 ```
 
 `build-app.sh` signs with the first "Apple Development" identity in your

@@ -6,6 +6,7 @@ set -euo pipefail
 #
 #   ./scripts/build-app.sh            # build dist/Usage.app
 #   SIGN_IDENTITY=- ./scripts/build-app.sh   # force an ad-hoc signature
+#                                             (scripts/make-dmg.sh does this)
 #
 # The bundle is LSUIElement, so it has no Dock icon and never appears in the
 # app switcher. It is signed with the first "Apple Development" identity in the
@@ -70,8 +71,14 @@ if [[ -z "${SIGN_IDENTITY:-}" ]]; then
   SIGN_IDENTITY=${SIGN_IDENTITY:--}
 fi
 echo "• code-signing with: $SIGN_IDENTITY"
-codesign --force --deep --sign "$SIGN_IDENTITY" "$APP" >/dev/null 2>&1 || \
-  codesign --force --deep --sign "$SIGN_IDENTITY" "$APP"
-codesign --verify --deep --strict "$APP" && echo "  signature OK"
+# Inside-out, never --deep: sign every nested bundle and Mach-O file first,
+# then the app itself. Today the bundle holds one binary and nothing nested,
+# so the loop finds nothing; it keeps a later framework or helper from being
+# signed over by a blanket flag.
+while IFS= read -r nested; do
+  codesign --force --sign "$SIGN_IDENTITY" "$nested"
+done < <(find "$CONTENTS" -mindepth 2 \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.dylib' \) -prune -print 2>/dev/null | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-)
+codesign --force --sign "$SIGN_IDENTITY" "$APP"
+codesign --verify --strict "$APP" && echo "  signature OK"
 
 echo "built: $APP"
