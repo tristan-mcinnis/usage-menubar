@@ -91,11 +91,11 @@ Executable=$TD/fake.app/Contents/MacOS/$EXEC_NAME
 Format=app bundle with Mach-O thin (arm64)
 CodeDirectory v=20500 size=1700
 Signature size=4797
-Authority=Apple Development: tristan.mcinnis@gmail.com (5SK292LG7D)
+Authority=Apple Development: dev@example.com (ABCDE12345)
 Authority=Apple Worldwide Developer Relations Certification Authority
 Authority=Apple Root CA
 Timestamp=2026-09-06T00:00:00Z
-TeamIdentifier=QHCFP5472F
+TeamIdentifier=TEAMID0000
 Info.plist entries=...
 Identifier=$BUNDLE_ID
 RAW

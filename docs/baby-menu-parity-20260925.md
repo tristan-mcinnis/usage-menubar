@@ -25,10 +25,10 @@ during the check), and a launch log.
 | claude-code-quota | Model-scoped weekly (Fable today; Sonnet, Opus when reported) | "Weekly · Fable" meter row | covered | |
 | claude-code-quota | Reset time of each window | Footnote names the session and weekly resets ("session resets 3h 27m · weekly 2d 3h"); added 2026-09-25 | covered | |
 | claude-code-quota | "% left" beside the bar | 100 minus the shown percent | not needed | Derived from the number already shown; one axis is percent used |
-| claude-code-quota | Plan badge ("max") | "Max" on the provider row | covered | |
+| claude-code-quota | Plan badge (the plan name) | Plan name on the provider row | covered | |
 | claude-code-quota | Source label (oauth / cli) | none | not needed | Which transport answered is not usage information |
 | claude-code-quota | "metered" tag on the active scoped window | Carried on the meter (`active`), not drawn | gap | Low value: the tag marks which model week is billing; the percent is shown either way |
-| claude-code-quota | Extra usage $ spent / $ limit | Not parsed | gap | Dormant: this account reports no `extra_usage` window (Baby Menu cache has none); Return opens claude.ai usage |
+| claude-code-quota | Extra usage $ spent / $ limit | Not parsed | gap | Dormant: the surveyed account reported no `extra_usage` window (Baby Menu cache had none); Return opens claude.ai usage |
 | claude-code-quota | CLI fallback (`claude` under `expect`) when the OAuth token is unusable | Last good numbers stay, marked "Token expired · stale N min ago", until Claude Code renews the token | gap | Usage will not launch a Claude Code session or renew the token itself (renewal rotates Claude Code's refresh token). Numbers go stale only after ~8 h with no Claude Code run |
 | claude-code-quota | live / stale / off status with refreshed time | Row detail line and header age ("refreshed just now", "stale 5 min ago") | covered | |
 | claude-code-quota | Error line "showing last reading" | Reason plus "stale N min ago" on the row | covered | |
@@ -37,22 +37,22 @@ during the check), and a launch log.
 | codex-quota | Weekly reset time | Footnote "weekly resets in 5d 1h" | covered | |
 | codex-quota | Per-feature weekly windows (gpt-reserve etc.) | "gpt-reserve · weekly" meter rows | covered | |
 | codex-quota | "limit reached" badge | The window reads 100% | covered | |
-| codex-quota | Plan badge ("pro") | "Pro" on the provider row | covered | |
+| codex-quota | Plan badge (the plan name) | Plan name on the provider row | covered | |
 | codex-quota | "% left", source label | none | not needed | Derived / transport detail, as for Claude |
 | codex-quota | Account email | none | not needed | Usage carries no identity by rule (a reading is meters and a plan); one Codex login on this Mac |
-| codex-quota | Credits balance ("no credits") | none | not needed | This account has no credits (`hasCredits: false`); nothing to show |
+| codex-quota | Credits balance ("no credits") | none | not needed | An account with no credits reports `hasCredits: false`; nothing to show |
 | codex-quota | Status, refreshed time, retry | As for Claude | covered | |
-| deepseek-credits | Credits remaining (¥1121.70) | Balance on the provider row and the meter row | covered | |
+| deepseek-credits | Credits remaining (e.g. ¥100.00) | Balance on the provider row and the meter row | covered | |
 | deepseek-credits | Currency badge | ¥ symbol on the amount | covered | |
 | deepseek-credits | Change over the sampled span ("-¥X past 30d") | "N% of 30d peak spent" footnote and bar | covered | |
 | deepseek-credits | Sparkline of the balance history | none | not needed | One axis rule: the bar is spend since the 30-day peak; Return opens the platform usage page with the full chart |
-| deepseek-credits | Topped up / granted split | none | not needed | Granted is ¥0 on this account, so topped up equals the total shown |
+| deepseek-credits | Topped up / granted split | none | not needed | With granted at zero, topped up equals the total shown; the total is what matters |
 | deepseek-credits | "not usable" badge (`is_available: false`) | Balance at ¥0.00 and 100% | not needed | DeepSeek sets it false when the balance cannot fund calls, which the empty balance already shows |
 | deepseek-credits | Other currencies | One meter per currency ("Balance · USD") | covered | |
 | deepseek-credits | Status, refreshed time, retry | As for Claude | covered | |
-| moonshot-credits | Credits remaining (available ¥0.00) | Balance on the row and meter, 100% spent | covered | |
-| moonshot-credits | Cash (-¥6.74) and vouchers (¥0) | none | gap | Low value: the arrears amount is only on the console page; the key already reads empty at 100% |
-| moonshot-credits | Token quota badge (1,075,230 tokens), rate limits (rpm, tpm, concurrency), tier, host | none | not needed | Organisation capacity settings, not usage; a second axis the one-axis rule keeps out |
+| moonshot-credits | Credits remaining (available balance) | Balance on the row and meter, as percent spent | covered | |
+| moonshot-credits | Cash (e.g. -¥5.00) and vouchers | none | gap | Low value: the arrears amount is only on the console page; an empty key already reads 100% |
+| moonshot-credits | Token quota badge (e.g. 1,000,000 tokens), rate limits (rpm, tpm, concurrency), tier, host | none | not needed | Organisation capacity settings, not usage; a second axis the one-axis rule keeps out |
 | moonshot-credits | Spend over the sampled span, sample count | "N% of 30d peak spent" | covered | |
 | moonshot-credits | Sparkline | none | not needed | One axis rule, as for DeepSeek |
 | moonshot-credits | Status, refreshed time, retry | As for Claude | covered | |

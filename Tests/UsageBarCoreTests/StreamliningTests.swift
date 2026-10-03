@@ -360,7 +360,7 @@ final class StreamliningTests: XCTestCase {
         class: "genp"
         attributes:
             0x00000007 <blob>="Claude Code-credentials"
-            0x00000008 <blob>=tristan
+            0x00000008 <blob>=user
             0x0000000A <date>=2026-08-29 02:37:00 +0000
         """
         XCTAssertTrue(meta.contains("Claude Code-credentials"))
