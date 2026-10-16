@@ -77,8 +77,11 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
 
 - House design through the generated token file. `Sources/UsageBar/
   HouseDesign.swift` is a verbatim copy of `design-system/generated/
-  HouseDesign.swift`; never hand-edit it. `HouseUI.swift` is the Slate kit
-  copied from Memory: a fix to a component lands in Memory and Cotype too.
+  HouseDesign.swift`; never hand-edit it. `HouseUI.swift` and `MenuBarPanel.swift`
+  are the Slate menu-bar kit, byte copies of `design-system/kit/`; never
+  hand-edit them. A fix lands in design-system, then `make sync-kit` there
+  copies it into every menu-bar app. Usage's own panel code is
+  `MenuBarPanelView.swift` and `MenuBarPanelController.swift`.
 - The Meter row is a registered component (`design-system/components.json`,
   key `meter-row`). Change its spec there first, then here.
 - Adding a source is one case on `ProviderID` (title, lane, glyph, usage

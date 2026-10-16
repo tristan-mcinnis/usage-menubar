@@ -4,19 +4,6 @@ import Foundation
 import Network
 import UsageBarCore
 
-/// One selectable row in the panel: a provider, or an action.
-struct PanelAction: Identifiable {
-    let id: String
-    let glyph: String
-    let title: String
-    /// The chord drawn as key caps on the right. Empty draws none.
-    var chord: String = ""
-    var isEnabled: Bool = true
-    /// A rarer action, drawn at reduced ink in the second group.
-    var isQuiet: Bool = false
-    var run: () -> Void = {}
-}
-
 /// A one-line answer under the header: what just happened, with a dot.
 struct Confirmation: Equatable {
     let ok: Bool

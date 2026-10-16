@@ -29,7 +29,7 @@ It needs `/Applications/Usage.app`, live credentials, live provider APIs and
 `Sources/UsageBar/HouseDesign.swift` is a verbatim copy of
 `design-system/generated/HouseDesign.swift` in the sibling House design
 system checkout (`../design-system`), and `make check-consumers` there fails
-if this copy drifts. `Sources/UsageBar/HouseUI.swift` is the Slate kit,
-copied from Memory (and before that Cotype), so a component fix lands in all
-the menu-bar apps. Component rules live in `../design-system/DESIGN.md`
+if this copy drifts. `Sources/UsageBar/HouseUI.swift` and `MenuBarPanel.swift` are the Slate
+menu-bar kit, byte copies of `design-system/kit/`, so a component fix lands in
+all the menu-bar apps through `make sync-kit` there. Component rules live in `../design-system/DESIGN.md`
 ("Menu bar panel" and "Meter row").

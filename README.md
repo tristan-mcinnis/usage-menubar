@@ -229,9 +229,9 @@ automatically; move or clear the backup root yourself.
 ### Design
 
 The look is the House design system (Slate). `Sources/UsageBar/HouseDesign.swift`
-is a generated token file and `Sources/UsageBar/HouseUI.swift` is the shared
-component kit, copied in so this repo builds on its own. Do not hand-edit
-`HouseDesign.swift`.
+is a generated token file and `Sources/UsageBar/HouseUI.swift` and
+`MenuBarPanel.swift` are the shared menu-bar kit, copied in from
+`design-system/kit/` so this repo builds on its own. Do not hand-edit them.
 
 ## Part of House
 
