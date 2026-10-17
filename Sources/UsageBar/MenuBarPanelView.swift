@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 import UsageBarCore
+import HouseDesign
+import HouseUIKit
 
 // The menu-bar surface, following the "Menu bar panel" component in
 // design-system/DESIGN.md: a 300 px glass panel in place of an NSMenu, a header

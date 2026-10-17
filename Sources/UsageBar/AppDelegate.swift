@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 import UsageBarCore
+import HouseDesign
+import HouseUIKit
 
 /// Menu-bar app delegate. Owns the status item, the panel, the polling model,
 /// and the settings window. Usage is an `.accessory` app: no Dock icon, and

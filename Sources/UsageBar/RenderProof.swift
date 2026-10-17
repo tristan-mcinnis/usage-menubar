@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UsageBarCore
+import HouseDesign
 
 // Offscreen render proof. `usage-bar --render-proof <dir>` draws every Slate
 // surface into PNGs without putting a window on screen, so the design can be

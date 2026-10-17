@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import Network
 import UsageBarCore
+import HouseUIKit
 
 /// A one-line answer under the header: what just happened, with a dot.
 struct Confirmation: Equatable {

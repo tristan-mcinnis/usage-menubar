@@ -17,13 +17,30 @@ let package = Package(
         .library(name: "UsageBarCore", targets: ["UsageBarCore"]),
         .executable(name: "usage-bar", targets: ["UsageBar"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/tristan-mcinnis/design-system", from: "1.0.0"),
+    ],
     targets: [
         .target(name: "UsageBarCore"),
-        .executableTarget(name: "UsageBar", dependencies: ["UsageBarCore"]),
+        .executableTarget(
+            name: "UsageBar",
+            dependencies: [
+                "UsageBarCore",
+                .product(name: "HouseDesign", package: "design-system"),
+                .product(name: "HouseUIKit", package: "design-system"),
+            ]
+        ),
         // The app's own window rules: the menu bar a normal window gets, and
         // when the app goes back to being a menu-bar app. AppKit only, no
         // window is opened.
-        .testTarget(name: "UsageBarTests", dependencies: ["UsageBar"]),
+        .testTarget(
+            name: "UsageBarTests",
+            dependencies: [
+                "UsageBar",
+                .product(name: "HouseDesign", package: "design-system"),
+                .product(name: "HouseUIKit", package: "design-system"),
+            ]
+        ),
         .testTarget(
             name: "UsageBarCoreTests",
             dependencies: ["UsageBarCore"],

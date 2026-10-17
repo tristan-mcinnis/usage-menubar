@@ -2,6 +2,8 @@ import AppKit
 import ServiceManagement
 import SwiftUI
 import UsageBarCore
+import HouseDesign
+import HouseUIKit
 
 /// Usage has one settings pane, so the shared Slate shell is used at its
 /// smallest: a 220 px rail with a single row, a 60 px pane header, cards on

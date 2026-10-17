@@ -75,12 +75,10 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
 
 ## Conventions
 
-- House design through the generated token file. `Sources/UsageBar/
-  HouseDesign.swift` is a verbatim copy of `design-system/generated/
-  HouseDesign.swift`; never hand-edit it. `HouseUI.swift` and `MenuBarPanel.swift`
-  are the Slate menu-bar kit, byte copies of `design-system/kit/`; never
-  hand-edit them. A fix lands in design-system, then `make sync-kit` there
-  copies it into every menu-bar app. Usage's own panel code is
+- House design through the design-system package (`HouseDesign` tokens,
+  `HouseUIKit` Slate menu-bar kit), pinned in `Package.swift` by GitHub URL and
+  tag. A fix lands in design-system and is released as a tag; raise the
+  `from:` pin here to take it. Usage's own panel code is
   `MenuBarPanelView.swift` and `MenuBarPanelController.swift`.
 - The Meter row is a registered component (`design-system/components.json`,
   key `meter-row`). Change its spec there first, then here.

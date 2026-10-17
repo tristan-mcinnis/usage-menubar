@@ -24,12 +24,10 @@ It needs `/Applications/Usage.app`, live credentials, live provider APIs and
 ./scripts/acceptance.sh --skip-build # skip T1
 ```
 
-## House design system copy
+## House design system package
 
-`Sources/UsageBar/HouseDesign.swift` is a verbatim copy of
-`design-system/generated/HouseDesign.swift` in the sibling House design
-system checkout (`../design-system`), and `make check-consumers` there fails
-if this copy drifts. `Sources/UsageBar/HouseUI.swift` and `MenuBarPanel.swift` are the Slate
-menu-bar kit, byte copies of `design-system/kit/`, so a component fix lands in
-all the menu-bar apps through `make sync-kit` there. Component rules live in `../design-system/DESIGN.md`
+The tokens (`HouseDesign`) and the Slate menu-bar kit (`HouseUIKit`) come from
+the design-system package, pinned in `Package.swift` by GitHub URL and tag, and
+`make check-consumers` in that repo fails if the pin goes missing or a copy
+reappears. A component fix lands there and ships as a tag. Component rules live in `../design-system/DESIGN.md`
 ("Menu bar panel" and "Meter row").
