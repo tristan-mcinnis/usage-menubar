@@ -1,0 +1,15 @@
+{
+  "originHash" : "269870132ea0757cb79f7a118c64b1bde6c5ef6e185df1ac395ba299068cdbe2",
+  "pins" : [
+    {
+      "identity" : "design-system",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tristan-mcinnis/design-system",
+      "state" : {
+        "revision" : "03dc7dfdf369641f19107478fae62dee9f904878",
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}
