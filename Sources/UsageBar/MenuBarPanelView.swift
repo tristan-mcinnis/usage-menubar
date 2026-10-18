@@ -72,7 +72,10 @@ struct ProviderRow: View {
     /// colour is never alone.
     private var detail: String {
         switch reading.state {
-        case .ok: return reading.provider.lane == .subscription ? "Subscription" : "Prepaid key"
+        case .ok:
+            if reading.provider.lane == .subscription { return "Subscription" }
+            // A custom API source is whatever its script reads, not a prepaid key.
+            return reading.provider.isCustom ? "API usage" : "Prepaid key"
         case .stale:
             if let age = reading.shownAge(now: now) { return "Restored · \(age)" }
             return "Restored"
