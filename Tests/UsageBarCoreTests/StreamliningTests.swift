@@ -36,7 +36,7 @@ final class StreamliningTests: XCTestCase {
         XCTAssertEqual(loaded.readings, store.readings)
 
         let hydrated = loaded.snapshot()
-        XCTAssertEqual(hydrated.readings.count, ProviderID.allCases.count)
+        XCTAssertEqual(hydrated.readings.count, ProviderID.builtIn.count)
         XCTAssertEqual(hydrated.reading(.claude)?.state, .stale, "archived data is presented stale at launch")
         XCTAssertEqual(hydrated.reading(.claude)?.plan, "max")
         XCTAssertEqual(hydrated.reading(.claude)?.meters.first?.percentUsed, 42)
@@ -103,7 +103,7 @@ final class StreamliningTests: XCTestCase {
 
         let headline = hydrated.headline(now: now)
         XCTAssertEqual(headline.health, .unknown, "a restored+pending mix must not report green healthy")
-        XCTAssertTrue(headline.text.contains("2 of \(ProviderID.allCases.count)"), "restored providers count as visible data: \(headline.text)")
+        XCTAssertTrue(headline.text.contains("2 of \(ProviderID.builtIn.count)"), "restored providers count as visible data: \(headline.text)")
         XCTAssertFalse(headline.text.contains("refreshed just now"), "stale data is never called fresh: \(headline.text)")
         XCTAssertTrue(headline.text.contains("2 h ago"), "the header is honest about the data's age: \(headline.text)")
     }

@@ -18,7 +18,8 @@ final class PollBackoffTests: XCTestCase {
             defaults: UserDefaults(suiteName: "PollBackoffTests-\(UUID().uuidString)")!,
             samplesPath: temp.appendingPathComponent("samples.json").path,
             readingsPath: temp.appendingPathComponent("readings.json").path,
-            retriesPath: temp.appendingPathComponent("retries.json").path
+            retriesPath: temp.appendingPathComponent("retries.json").path,
+            sourcesPath: temp.appendingPathComponent("sources.json").path
         )
         model.now = now
         // Opening a panel must never read a provider in a test.
@@ -174,5 +175,17 @@ final class PollBackoffTests: XCTestCase {
         model.override(snapshot: UsageSnapshot(readings: [], readAt: Date()))
         model.panelOpened()
         XCTAssertEqual(refreshCount, 0)
+    }
+
+    /// A saved `sources.json` is read on the next open even when the numbers
+    /// are fresh, so an edit shows without a restart; an unchanged file is not.
+    func testASavedSourcesFileIsReadOnTheNextOpen() throws {
+        let model = makeModel()
+        model.override(snapshot: UsageSnapshot(readings: [], readAt: Date()))
+        XCTAssertFalse(model.sourcesChanged)
+        try CustomSourceFile.createTemplateIfMissing(at: model.sourcesPath)
+        XCTAssertTrue(model.sourcesChanged)
+        model.panelOpened()
+        XCTAssertEqual(refreshCount, 1)
     }
 }

@@ -32,7 +32,12 @@ public struct ReadingStore: Equatable, Sendable {
                 current[reading.provider] = Self.goodReading(of: reading)
             }
         }
-        readings = ProviderID.allCases.compactMap { current[$0] }
+        // The snapshot's order, then built-ins it did not carry. A custom
+        // source the snapshot no longer has was taken out of the config file,
+        // so its numbers are not kept.
+        let shown = snapshot.readings.map(\.provider)
+        let kept = readings.map(\.provider).filter { !$0.isCustom && !shown.contains($0) }
+        readings = (shown + kept).compactMap { current[$0] }
     }
 
     /// A reading is worth archiving when it has something to show: meters or a
@@ -60,10 +65,14 @@ public struct ReadingStore: Equatable, Sendable {
     /// presented as stale, not OK, so it is visibly not freshly read and the
     /// header never claims the panel is fully healthy, and each keeps its own
     /// data age.
-    public func snapshot() -> UsageSnapshot {
+    ///
+    /// `providers` is every source to show, built-ins first, then the custom
+    /// sources the config file lists now; an archived custom source the file
+    /// no longer lists is not restored.
+    public func snapshot(providers: [ProviderID] = ProviderID.builtIn) -> UsageSnapshot {
         var byProvider: [ProviderID: ProviderReading] = [:]
         for reading in readings { byProvider[reading.provider] = reading }
-        let all = ProviderID.allCases.map { byProvider[$0] ?? .pending($0) }
+        let all = providers.map { byProvider[$0]?.with(provider: $0) ?? .pending($0) }
         let restored = all.map { reading in
             guard reading.state.isOK, reading.readAt != nil else { return reading }
             return ProviderReading(
@@ -77,7 +86,7 @@ public struct ReadingStore: Equatable, Sendable {
         }
         // The summary names the oldest restored data, so one recent provider
         // cannot make an older one look fresh. Each row still shows its own age.
-        return UsageSnapshot(readings: restored, readAt: readings.compactMap(\.readAt).min())
+        return UsageSnapshot(readings: restored, readAt: all.compactMap(\.readAt).min())
     }
 
     // MARK: - Disk

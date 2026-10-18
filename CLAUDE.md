@@ -30,7 +30,10 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
   plan name, never a token. `--doctor` prints "present" or "absent", never a
   value. Nothing logs a header.
 - **No shell interpolation.** `Subprocess.run` is the only place a `Process`
-  is built; it takes an executable path and an argument array.
+  is built; it takes an executable path and an argument array. A custom
+  command source given as a string runs as `/bin/sh -c <string>`: that string
+  is the user's own script from `sources.json`, and Usage never puts a value
+  of its own into it.
 - **Nothing blocks the main thread.** Every read runs on the model's work
   queue and comes back through `DispatchQueue.main`. Each network call and
   the `agy` launch carry their own timeout.
@@ -82,10 +85,27 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
   `MenuBarPanelView.swift` and `MenuBarPanelController.swift`.
 - The Meter row is a registered component (`design-system/components.json`,
   key `meter-row`). Change its spec there first, then here.
-- Adding a source is one case on `ProviderID` (title, lane, glyph, usage
-  URL), one parser in `Parsers.swift` with a fixture and a test, and one
-  function in `ProviderReader`. The panel, the doctor, and the settings
-  sources card pick it up from `ProviderID.allCases`.
+- Adding a built-in source is one static member on `ProviderID` listed in
+  `ProviderID.builtIn` (title, lane, glyph, usage URL in its switches), one
+  parser in `Parsers.swift` with a fixture and a test, and one function in
+  `ProviderReader`. The panel and the doctor pick it up from
+  `ProviderID.builtIn`.
+- Custom sources (`CustomSources.swift`) come from
+  `~/.config/usage-bar/sources.json`: `manual` (percent of the billing period
+  elapsed, counted from one anchor date so month ends never drift) and
+  `command` (a user program printing `{"percent": …}`, run through
+  `Subprocess` with a timeout). Their keys are `custom.<slug>`; `ProviderID`
+  carries their title and lane, but identity and the encoded form are the key
+  alone, so `readings.json` and `retries.json` keep their shape. The file is
+  read on every poll and on a panel open when its modification time moved;
+  `UsageSnapshot.reconciled(with:)` makes the rows follow it. A broken file
+  or entry is a red row with the reason (`ProviderID.customConfig` for the
+  file), never a crash. `ProviderReader.read(_:custom:...)` is the one read
+  path for both kinds of source. Usage writes the file only to create the
+  template, never over an existing one.
+- Tests: `UsageBarCoreTests` and `UsageBarTests` are XCTest and stay so until
+  each migrates whole. `UsageBarCustomSourceTests` is a newer target and is
+  Swift Testing (design-system/SWIFT.md rule 4).
 - The endpoint shapes were confirmed against Baby Menu's provider code
   (`~/.baby-menu/extensions/*/server.ts`, 2026-09), which read the live
   endpoints; the fixtures are written to those shapes, not captured from an

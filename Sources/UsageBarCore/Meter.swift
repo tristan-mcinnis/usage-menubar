@@ -15,62 +15,146 @@ public enum Lane: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Every source Usage knows how to read. The order here is the order in the
-/// panel.
-public enum ProviderID: String, Codable, Sendable, CaseIterable, Identifiable {
-    case claude
-    case codex
-    case antigravity
-    case deepseek
-    case moonshot
-    case soniox
+/// How a custom source draws on the panel: what the config file named it,
+/// which lane it sits in, its glyph, and where Return goes. Carried on its
+/// `ProviderID`, never part of its identity.
+public struct CustomDisplay: Equatable, Hashable, Sendable {
+    public let title: String
+    public let lane: Lane
+    public let glyph: String
+    public let url: URL?
+
+    public init(title: String, lane: Lane, glyph: String, url: URL? = nil) {
+        self.title = title
+        self.lane = lane
+        self.glyph = glyph
+        self.url = url
+    }
+}
+
+/// One source on the panel. The six built-in sources are the static members;
+/// a source from `sources.json` is `custom(...)`, keyed `custom.<slug>`.
+///
+/// Identity is `rawValue` alone, and that is all that is encoded, so
+/// `readings.json` and `retries.json` keep the shape they had when this was
+/// an enum. A custom source's title and lane come from the config file on
+/// every load, never from the archive.
+public struct ProviderID: RawRepresentable, Hashable, Sendable, Identifiable, Codable {
+    public let rawValue: String
+    /// Set for a custom source loaded from the config file; nil for a
+    /// built-in and for an ID decoded from disk.
+    public let custom: CustomDisplay?
+
+    public init?(rawValue: String) {
+        guard !rawValue.isEmpty else { return nil }
+        self.rawValue = rawValue
+        self.custom = nil
+    }
+
+    private init(_ rawValue: String, custom: CustomDisplay? = nil) {
+        self.rawValue = rawValue
+        self.custom = custom
+    }
+
+    public static let claude = ProviderID("claude")
+    public static let codex = ProviderID("codex")
+    public static let antigravity = ProviderID("antigravity")
+    public static let deepseek = ProviderID("deepseek")
+    public static let moonshot = ProviderID("moonshot")
+    public static let soniox = ProviderID("soniox")
+
+    /// The built-in sources. The order here is the order in the panel; custom
+    /// sources follow them in the order the config file lists them.
+    public static let builtIn: [ProviderID] = [.claude, .codex, .antigravity, .deepseek, .moonshot, .soniox]
+
+    /// The prefix every custom source's key carries.
+    public static let customPrefix = "custom."
+
+    /// A source from the config file, keyed by its slug.
+    public static func custom(slug: String, display: CustomDisplay) -> ProviderID {
+        ProviderID(customPrefix + slug, custom: display)
+    }
+
+    /// The row that stands for the config file itself when it cannot be
+    /// read, so a broken file says so in the panel instead of vanishing.
+    public static let customConfig = ProviderID(
+        "custom",
+        custom: CustomDisplay(title: "Custom sources", lane: .subscription, glyph: "doc.badge.gearshape")
+    )
+
+    public var isCustom: Bool { rawValue == "custom" || rawValue.hasPrefix(Self.customPrefix) }
 
     public var id: String { rawValue }
 
+    public static func == (lhs: ProviderID, rhs: ProviderID) -> Bool { lhs.rawValue == rhs.rawValue }
+    public func hash(into hasher: inout Hasher) { hasher.combine(rawValue) }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        guard let id = ProviderID(rawValue: raw) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "empty provider id"))
+        }
+        self = id
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
     public var title: String {
-        switch self {
-        case .claude: return "Claude Code"
-        case .codex: return "Codex"
-        case .antigravity: return "Antigravity"
-        case .deepseek: return "DeepSeek"
-        case .moonshot: return "Moonshot"
-        case .soniox: return "Soniox"
+        if let custom { return custom.title }
+        switch rawValue {
+        case "claude": return "Claude Code"
+        case "codex": return "Codex"
+        case "antigravity": return "Antigravity"
+        case "deepseek": return "DeepSeek"
+        case "moonshot": return "Moonshot"
+        case "soniox": return "Soniox"
+        default:
+            // A custom ID decoded from disk before the config file named it.
+            return rawValue.hasPrefix(Self.customPrefix) ? String(rawValue.dropFirst(Self.customPrefix.count)) : rawValue
         }
     }
 
     public var lane: Lane {
-        switch self {
-        case .claude, .codex, .antigravity: return .subscription
-        case .deepseek, .moonshot, .soniox: return .apiKey
+        if let custom { return custom.lane }
+        switch rawValue {
+        case "deepseek", "moonshot", "soniox": return .apiKey
+        default: return .subscription
         }
     }
 
     /// The SF symbol on the provider row. One family, so the rows align.
     public var glyph: String {
-        switch self {
-        case .claude: return "sparkle"
-        case .codex: return "chevron.left.forwardslash.chevron.right"
-        case .antigravity: return "arrow.up.circle"
-        case .deepseek: return "key"
-        case .moonshot: return "key"
-        case .soniox: return "waveform"
+        if let custom { return custom.glyph }
+        switch rawValue {
+        case "claude": return "sparkle"
+        case "codex": return "chevron.left.forwardslash.chevron.right"
+        case "antigravity": return "arrow.up.circle"
+        case "deepseek", "moonshot": return "key"
+        case "soniox": return "waveform"
+        default: return "circle.dashed"
         }
     }
 
     /// Where Return on the row goes: the provider's own usage or billing page.
-    public var usageURL: URL {
-        switch self {
-        case .claude: return URL(string: "https://claude.ai/settings/usage")!
-        case .codex: return URL(string: "https://chatgpt.com/codex/settings/usage")!
-        case .antigravity: return URL(string: "https://antigravity.google/")!
-        case .deepseek: return URL(string: "https://platform.deepseek.com/usage")!
-        case .moonshot: return URL(string: "https://platform.moonshot.cn/console/account")!
-        case .soniox: return URL(string: "https://console.soniox.com/")!
+    /// Nil for a custom source whose config entry names no `url`.
+    public var usageURL: URL? {
+        if isCustom { return custom?.url }
+        switch rawValue {
+        case "claude": return URL(string: "https://claude.ai/settings/usage")
+        case "codex": return URL(string: "https://chatgpt.com/codex/settings/usage")
+        case "antigravity": return URL(string: "https://antigravity.google/")
+        case "deepseek": return URL(string: "https://platform.deepseek.com/usage")
+        case "moonshot": return URL(string: "https://platform.moonshot.cn/console/account")
+        case "soniox": return URL(string: "https://console.soniox.com/")
+        default: return nil
         }
     }
 
-    public static var subscriptions: [ProviderID] { allCases.filter { $0.lane == .subscription } }
-    public static var apiKeys: [ProviderID] { allCases.filter { $0.lane == .apiKey } }
+    public static var subscriptions: [ProviderID] { builtIn.filter { $0.lane == .subscription } }
+    public static var apiKeys: [ProviderID] { builtIn.filter { $0.lane == .apiKey } }
 }
 
 /// One line on the panel: a quota window or a balance, on one axis.
@@ -94,6 +178,10 @@ public struct Meter: Equatable, Sendable, Identifiable, Codable {
     /// The amount is money spent over a window, not a balance left. It has
     /// no bar, because a spend has no cap to be a percent of.
     public let spent: Bool
+    /// The source's own words for this meter, shown after the reset time:
+    /// a custom command's `detail`, or a manual plan's "renews in 12 days ·
+    /// $30/mo".
+    public let note: String?
 
     public init(
         id: String,
@@ -103,7 +191,8 @@ public struct Meter: Equatable, Sendable, Identifiable, Codable {
         amount: Double? = nil,
         currency: String? = nil,
         active: Bool = false,
-        spent: Bool = false
+        spent: Bool = false,
+        note: String? = nil
     ) {
         self.id = id
         self.label = label
@@ -113,6 +202,7 @@ public struct Meter: Equatable, Sendable, Identifiable, Codable {
         self.currency = currency
         self.active = active
         self.spent = spent
+        self.note = note
     }
 
     public var isBalance: Bool { amount != nil && !spent }
@@ -131,6 +221,12 @@ public struct Meter: Equatable, Sendable, Identifiable, Codable {
     /// The dim text after the number: "resets 2h 10m", "resets Mon", or the
     /// balance's spend since the peak.
     public func detail(now: Date = Date()) -> String? {
+        let base = baseDetail(now: now)
+        guard let note else { return base }
+        return base.map { "\($0) · \(note)" } ?? note
+    }
+
+    private func baseDetail(now: Date) -> String? {
         if let resetsAt {
             return "resets " + Format.countdown(to: resetsAt, from: now)
         }
@@ -274,6 +370,15 @@ public struct ProviderReading: Equatable, Sendable, Identifiable, Codable {
         ProviderReading(provider: provider, state: .pending)
     }
 
+    /// The same reading under another ID with the same key: how a custom
+    /// source picks up the title and lane the config file now gives it.
+    public func with(provider: ProviderID) -> ProviderReading {
+        ProviderReading(
+            provider: provider, state: state, plan: plan, meters: meters,
+            readAt: readAt, attemptedAt: attemptedAt, retryAfterSeconds: retryAfterSeconds
+        )
+    }
+
     /// The last good plan or balance to put on the right of the row, whether or
     /// not the latest read freshened it. Empty when there is nothing to show
     /// (a provider never read OK).
@@ -331,7 +436,7 @@ public struct UsageSnapshot: Equatable, Sendable {
     }
 
     public static let pending = UsageSnapshot(
-        readings: ProviderID.allCases.map(ProviderReading.pending),
+        readings: ProviderID.builtIn.map(ProviderReading.pending),
         readAt: nil
     )
 
@@ -432,9 +537,26 @@ extension UsageSnapshot {
         for attempt in attempts {
             byProvider[attempt.provider] = Self.merge(attempt, over: byProvider[attempt.provider])
         }
-        let merged = ProviderID.allCases.compactMap { byProvider[$0] }
+        // Panel order: the rows already shown, then any source new to this
+        // snapshot in the order it was read.
+        var order = readings.map(\.provider)
+        for attempt in attempts where !order.contains(attempt.provider) { order.append(attempt.provider) }
+        let merged = order.compactMap { byProvider[$0] }
         let attempted = attempts.compactMap(\.attemptedAt).max()
         return UsageSnapshot(readings: merged, readAt: attempted ?? readAt)
+    }
+
+    /// The snapshot for exactly these sources, in this order: a source that
+    /// is already shown keeps its reading (and takes the given ID, so a
+    /// renamed custom source shows its new title), a new one is pending, and
+    /// a custom source the config file no longer lists is dropped.
+    public func reconciled(with providers: [ProviderID]) -> UsageSnapshot {
+        var byProvider: [ProviderID: ProviderReading] = [:]
+        for reading in readings { byProvider[reading.provider] = reading }
+        let next = providers.map { provider in
+            byProvider[provider].map { $0.with(provider: provider) } ?? .pending(provider)
+        }
+        return UsageSnapshot(readings: next, readAt: readAt)
     }
 
     /// Carry the last good display data over an attempt that could not refresh.
@@ -469,15 +591,28 @@ extension UsageSnapshot {
 public enum Format {
 
     public static func money(_ amount: Double, currency: String) -> String {
-        let symbol: String
+        symbol(currency) + String(format: "%.2f", amount)
+    }
+
+    /// A plan's price: "$30", "$9.99", "¥68". Whole amounts drop the cents.
+    public static func price(_ amount: Double, currency: String) -> String {
+        let whole = amount.rounded() == amount
+        return symbol(currency) + (whole ? String(format: "%.0f", amount) : String(format: "%.2f", amount))
+    }
+
+    /// A number as written: "140", "12.5".
+    public static func trimmed(_ value: Double) -> String {
+        value.rounded() == value ? String(format: "%.0f", value) : String(value)
+    }
+
+    private static func symbol(_ currency: String) -> String {
         switch currency.uppercased() {
-        case "CNY", "RMB": symbol = "¥"
-        case "USD": symbol = "$"
-        case "EUR": symbol = "€"
-        case "GBP": symbol = "£"
-        default: symbol = currency.uppercased() + " "
+        case "CNY", "RMB": return "¥"
+        case "USD": return "$"
+        case "EUR": return "€"
+        case "GBP": return "£"
+        default: return currency.uppercased() + " "
         }
-        return symbol + String(format: "%.2f", amount)
     }
 
     /// "2h 10m", "4d 3h", "12m", "now".

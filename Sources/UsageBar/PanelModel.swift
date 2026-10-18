@@ -35,6 +35,12 @@ final class PanelModel: ObservableObject {
     private let samplesPath: String
     private let readingsPath: String
     private let retriesPath: String
+    /// The custom-source file, `~/.config/usage-bar/sources.json` in the app.
+    let sourcesPath: String
+    /// The custom sources as last read, and the file's modification time
+    /// then, so an open can tell a saved edit from an unchanged file.
+    private var customConfig: CustomSourceConfig
+    private var sourcesStamp: Date?
     private let work = DispatchQueue(label: "com.tristan.usage-menubar.work", qos: .userInitiated)
 
     private var pollTimer: Timer?
@@ -95,17 +101,22 @@ final class PanelModel: ObservableObject {
         defaults: UserDefaults = .standard,
         samplesPath: String = SampleStore.defaultPath(),
         readingsPath: String = ReadingStore.defaultPath(),
-        retriesPath: String = RetryStore.defaultPath()
+        retriesPath: String = RetryStore.defaultPath(),
+        sourcesPath: String = CustomSourceFile.defaultPath()
     ) {
         self.tools = tools
         self.defaults = defaults
         self.samplesPath = samplesPath
         self.readingsPath = readingsPath
         self.retriesPath = retriesPath
+        self.sourcesPath = sourcesPath
+        let config = CustomSourceConfig.load(from: sourcesPath)
+        self.customConfig = config
+        self.sourcesStamp = CustomSourceFile.stamp(of: sourcesPath)
         // Show the last good numbers immediately, so opening the panel before
         // the first poll lands is not a wall of "Reading…". A provider with no
         // stored good reading stays pending until a poll reads it.
-        self.snapshot = ReadingStore.load(from: readingsPath).snapshot()
+        self.snapshot = ReadingStore.load(from: readingsPath).snapshot(providers: ProviderID.builtIn + config.providers)
     }
 
     // MARK: - Rows
@@ -130,6 +141,12 @@ final class PanelModel: ObservableObject {
                 isEnabled: !isReading,
                 isQuiet: true
             ) { [weak self] in self?.refresh() },
+            PanelAction(
+                id: "edit-sources",
+                glyph: "square.and.pencil",
+                title: "Edit sources…",
+                isQuiet: true
+            ) { [weak self] in self?.editSources() },
         ]
     }
 
@@ -178,9 +195,36 @@ final class PanelModel: ObservableObject {
 
     /// Open the provider's usage page. User-initiated, so taking the
     /// foreground is what was asked for.
+    /// A custom source with no `url` (and the row for a broken config file)
+    /// opens the config file instead, the one place it can be fixed.
     func openUsagePage(_ provider: ProviderID) {
+        guard let url = provider.usageURL else {
+            if provider.isCustom { editSources() }
+            return
+        }
         onClose()
-        NSWorkspace.shared.open(provider.usageURL)
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Open the custom-source file in the default editor, first writing the
+    /// commented template when there is no file yet. User-initiated, so
+    /// taking the foreground is what was asked for. The next panel open sees
+    /// the saved file's new modification time and reads it.
+    func editSources() {
+        onClose()
+        do {
+            try CustomSourceFile.createTemplateIfMissing(at: sourcesPath)
+        } catch {
+            confirmation = Confirmation(ok: false, text: "Could not create sources.json: \(error.localizedDescription)")
+            return
+        }
+        let url = URL(fileURLWithPath: sourcesPath)
+        // A .json file may have no default app on a fresh Mac; TextEdit
+        // always opens plain text.
+        if !NSWorkspace.shared.open(url),
+           let textEdit = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.TextEdit") {
+            NSWorkspace.shared.open([url], withApplicationAt: textEdit, configuration: NSWorkspace.OpenConfiguration())
+        }
     }
 
     func refresh() {
@@ -198,6 +242,7 @@ final class PanelModel: ObservableObject {
         generation += 1
         let gen = self.generation
         let base = self.snapshot
+        let custom = self.customConfig
         work.async { [tools, samplesPath, retriesPath, readingsPath] in
             var samples = SampleStore.load(from: samplesPath)
             var retries = RetryStore.load(from: retriesPath)
@@ -216,7 +261,7 @@ final class PanelModel: ObservableObject {
             }
             // Explicit user intent: forget a cached (possibly denied) credential.
             if provider == .claude { ClaudeCredential.resetCache() }
-            let reading = ProviderReader.read(provider, tools: tools, samples: &samples, now: now)
+            let reading = ProviderReader.read(provider, custom: custom, tools: tools, samples: &samples, now: now)
             if case .rateLimited = reading.state {
                 retries.backoff(provider, retryAfterSeconds: reading.retryAfterSeconds, now: now)
             } else if reading.state.isOK {
@@ -362,12 +407,19 @@ final class PanelModel: ObservableObject {
     /// panel rather than letting an aged number pass for a fresh one. A
     /// manual ⌘R, a per-provider refresh, and a system wake still read as
     /// they did.
+    ///
+    /// A saved change to `sources.json` (a new modification time, one stat)
+    /// also starts that read, so an edit shows without a restart.
     func panelOpened() {
         isPanelOpen = true
         lastOpenedAt = now()
         schedulePoll()
-        if Self.isStale(age: snapshotAge, base: baseInterval) { backgroundRefresh() }
+        if Self.isStale(age: snapshotAge, base: baseInterval) || sourcesChanged { backgroundRefresh() }
     }
+
+    /// Whether the custom-source file was saved, created, or removed since
+    /// the last read of it.
+    var sourcesChanged: Bool { CustomSourceFile.stamp(of: sourcesPath) != sourcesStamp }
 
     /// One reading of every source the retry policy allows, off the main
     /// thread. Sources are read one after another on the work queue; a slow one
@@ -380,14 +432,25 @@ final class PanelModel: ObservableObject {
         generation += 1
         let generation = self.generation
         let base = self.snapshot
-        work.async { [tools, samplesPath, retriesPath, readingsPath] in
+        work.async { [tools, samplesPath, retriesPath, readingsPath, sourcesPath] in
+            // The custom-source file is read on every poll, so a saved edit
+            // lands on the next one with no restart.
+            let stamp = CustomSourceFile.stamp(of: sourcesPath)
+            let custom = CustomSourceConfig.load(from: sourcesPath)
+            let providers = ProviderID.builtIn + custom.providers
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.generation == generation else { return }
+                self.customConfig = custom
+                self.sourcesStamp = stamp
+                self.apply(self.snapshot.reconciled(with: providers), force: true)
+            }
             var samples = SampleStore.load(from: samplesPath)
             var retries = RetryStore.load(from: retriesPath)
             let now = Date()
             var attempts: [ProviderReading] = []
-            for provider in ProviderID.allCases {
+            for provider in providers {
                 guard retries.shouldAttempt(provider, now: now) else { continue }
-                let reading = ProviderReader.read(provider, tools: tools, samples: &samples, now: now)
+                let reading = ProviderReader.read(provider, custom: custom, tools: tools, samples: &samples, now: now)
                 if case .rateLimited = reading.state {
                     retries.backoff(provider, retryAfterSeconds: reading.retryAfterSeconds, now: now)
                 } else if reading.state.isOK {
@@ -404,7 +467,7 @@ final class PanelModel: ObservableObject {
             }
             try? samples.save(to: samplesPath)
             try? retries.save(to: retriesPath)
-            let finalSnapshot = base.applying(attempts)
+            let finalSnapshot = base.reconciled(with: providers).applying(attempts)
             var store = ReadingStore()
             store.record(finalSnapshot)
             try? store.save(to: readingsPath)
@@ -416,8 +479,11 @@ final class PanelModel: ObservableObject {
         }
     }
 
-    private func apply(_ snapshot: UsageSnapshot) {
-        guard snapshot != self.snapshot else { return }
+    /// `force` publishes even an equal snapshot: a reading is compared by
+    /// its key, so a custom source whose lane or URL alone changed in the
+    /// config file would otherwise not repaint.
+    private func apply(_ snapshot: UsageSnapshot, force: Bool = false) {
+        guard force || snapshot != self.snapshot else { return }
         self.snapshot = snapshot
         onSnapshotChange(snapshot)
     }

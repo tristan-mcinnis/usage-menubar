@@ -29,6 +29,7 @@ enum RenderProof {
                 ("panel-restored", restoredModel()),
                 ("panel-rate-limited", rateLimitedModel()),
                 ("panel-pending", pendingModel()),
+                ("panel-custom-sources", customSourcesModel()),
             ]
             for (surface, model) in panels {
                 if let url = write(
@@ -43,7 +44,7 @@ enum RenderProof {
             }
             if let url = write(
                 view: SettingsView(model: allReadModel()),
-                size: NSSize(width: 760, height: 720),
+                size: NSSize(width: 760, height: 1080),
                 appearance: appearance,
                 to: directory.appendingPathComponent("settings-\(name).png")
             ) {
@@ -131,8 +132,36 @@ enum RenderProof {
         ),
     ])
 
+    /// Custom sources from a fixed config, read through the production
+    /// parser and reader with a fake command, so the proof shows what a real
+    /// `sources.json` turns into: two manual plans on the billing-period
+    /// axis, a command source, and an entry the parser refused.
+    static let customSources: UsageSnapshot = {
+        let config = CustomSourceConfig.parse(Data("""
+        {"sources": [
+          {"kind": "manual", "name": "SuperGrok", "plan": "SuperGrok", "cost": 30, "currency": "USD", "renews": "2026-09-12"},
+          {"kind": "manual", "name": "X Premium", "plan": "Premium+", "cost": 84, "period": "yearly", "renews": "2026-03-01"},
+          {"kind": "command", "name": "Team credits", "lane": "apiKey", "command": ["/bin/echo"]},
+          {"kind": "manual", "name": "Old plan", "renews": "next month"}
+        ]}
+        """.utf8))
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let printed = #"{"percent": 37, "detail": "370 of 1000 credits", "resetsAt": "2026-09-01T00:00:00Z"}"#
+        let readings = config.sources.map { source in
+            CustomSourceReader.read(
+                source, now: now.addingTimeInterval(-120), calendar: utc,
+                isExecutable: { _ in true },
+                run: { _, _, _ in CommandResult(exitCode: 0, stdout: printed, stderr: "") }
+            )
+        }
+        return allRead.applying(readings)
+    }()
+
     private static func model(_ snapshot: UsageSnapshot) -> PanelModel {
-        let model = PanelModel(defaults: proofDefaults)
+        // A sources path that never exists, so the proof never reads this
+        // Mac's own config and the settings PNG shows no home directory.
+        let model = PanelModel(defaults: proofDefaults, sourcesPath: CustomSourceFile.defaultPath(home: "~"))
         model.override(snapshot: snapshot)
         return model
     }
@@ -167,6 +196,10 @@ enum RenderProof {
 
     static func pendingModel() -> PanelModel {
         model(.pending)
+    }
+
+    static func customSourcesModel() -> PanelModel {
+        model(customSources)
     }
 
     // MARK: - Rendering

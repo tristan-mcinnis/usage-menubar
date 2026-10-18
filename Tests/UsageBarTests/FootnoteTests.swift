@@ -30,4 +30,15 @@ final class FootnoteTests: XCTestCase {
         ]
         XCTAssertEqual(MenuBarPanelView.footnote(for: claude(meters), shown: meters, now: now), "weekly resets in 5d")
     }
+
+    /// A custom source's own words follow the reset: a manual plan's renewal
+    /// and price, or a command's detail after its reset.
+    func testACustomSourceNoteIsTheFootnote() {
+        let manual = [Meter(id: "period", label: "Billing period", percentUsed: 55, note: "renews in 14 days · $30/mo")]
+        XCTAssertEqual(MenuBarPanelView.footnote(for: claude(manual), shown: manual, now: now), "renews in 14 days · $30/mo")
+        let command = [Meter(id: "command", label: "Usage", percentUsed: 37,
+                             resetsAt: now.addingTimeInterval(2 * 86_400), note: "370 of 1000 credits")]
+        XCTAssertEqual(MenuBarPanelView.footnote(for: claude(command), shown: command, now: now),
+                       "usage resets in 2d · 370 of 1000 credits")
+    }
 }

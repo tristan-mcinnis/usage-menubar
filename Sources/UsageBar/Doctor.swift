@@ -14,12 +14,13 @@ enum Doctor {
     /// 0 when every source that is set up read, 1 when any did not. A
     /// source that is not set up here (no tool, no key) is named but is not
     /// a failure.
-    static func run(tools: ToolPaths = .installed) -> Int32 {
+    static func run(tools: ToolPaths = .installed, sourcesPath: String = CustomSourceFile.defaultPath()) -> Int32 {
         var samples = SampleStore.load(from: SampleStore.defaultPath())
         let now = Date()
+        let custom = CustomSourceConfig.load(from: sourcesPath)
         var readings: [ProviderReading] = []
-        for provider in ProviderID.allCases {
-            readings.append(ProviderReader.read(provider, tools: tools, samples: &samples, now: now))
+        for provider in ProviderID.builtIn + custom.providers {
+            readings.append(ProviderReader.read(provider, custom: custom, tools: tools, samples: &samples, now: now))
         }
         let snapshot = UsageSnapshot(readings: readings, readAt: now)
 
@@ -67,6 +68,8 @@ enum Doctor {
             ("samples", SampleStore.defaultPath()),
             ("agy", tools.exists(tools.agy) ? tools.agy : "NOT INSTALLED (\(tools.agy))"),
             ("codex auth", FileManager.default.fileExists(atPath: CodexCredential.path(tools: tools)) ? "present" : "absent"),
+            ("custom sources", FileManager.default.fileExists(atPath: sourcesPath)
+                ? "\(sourcesPath) · \(custom.sources.count) entries" : "none (\(sourcesPath))"),
         ])
 
         return snapshot.shown.allSatisfy(\.state.isOK) ? 0 : 1

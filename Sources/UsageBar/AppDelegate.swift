@@ -18,7 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = PanelModel()
     private lazy var panel = MenuBarPanelController(model: model)
     /// The menu bar shown while a normal window is open.
-    private lazy var settingsMenu = SettingsMenu(showSettings: { [weak self] in self?.openSettings() })
+    private lazy var settingsMenu = SettingsMenu(
+        showSettings: { [weak self] in self?.openSettings() },
+        editSources: { [weak self] in self?.model.editSources() }
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let build = Bundle.main.object(forInfoDictionaryKey: "UsageBuiltFromCommit") as? String ?? "unstamped"

@@ -24,7 +24,25 @@ public enum ProviderReader {
         case .deepseek: return deepseek(tools: tools, samples: &samples, now: now)
         case .moonshot: return moonshot(tools: tools, samples: &samples, now: now)
         case .soniox: return soniox(tools: tools, now: now)
+        default:
+            // A custom source is read by `CustomSourceReader`, from its entry.
+            return attempt(provider, state: .error("not a built-in source"), now: now)
         }
+    }
+
+    /// Read any source on the panel: a built-in through its own reader, a
+    /// custom one through its entry in `custom`. A custom key the config no
+    /// longer lists says so rather than reading something else.
+    public static func read(
+        _ provider: ProviderID,
+        custom: CustomSourceConfig,
+        tools: ToolPaths,
+        samples: inout SampleStore,
+        now: Date = Date()
+    ) -> ProviderReading {
+        guard provider.isCustom else { return read(provider, tools: tools, samples: &samples, now: now) }
+        let source = custom.source(provider) ?? CustomSource(id: provider, kind: .invalid("no longer in sources.json"))
+        return CustomSourceReader.read(source, now: now, home: tools.home)
     }
 
     /// Build a reading for one attempt. `readAt` is the data time, set only on

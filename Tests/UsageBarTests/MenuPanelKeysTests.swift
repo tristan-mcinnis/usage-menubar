@@ -24,7 +24,8 @@ final class MenuPanelKeysTests: XCTestCase {
             defaults: UserDefaults(suiteName: "MenuPanelKeysTests-\(UUID().uuidString)")!,
             samplesPath: temp.appendingPathComponent("samples.json").path,
             readingsPath: temp.appendingPathComponent("readings.json").path,
-            retriesPath: temp.appendingPathComponent("retries.json").path
+            retriesPath: temp.appendingPathComponent("retries.json").path,
+            sourcesPath: temp.appendingPathComponent("sources.json").path
         )
         return (MenuBarPanelController(model: model), model)
     }

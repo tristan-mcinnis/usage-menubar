@@ -151,7 +151,7 @@ struct SettingsView: View {
     private var sourcesCard: some View {
         SlateCard(
             section: "Sources",
-            footnote: "Usage keeps no credential. It reads what each tool already stores, and writes balance samples, last-good readings, rate-limit retry deadlines, and a launch log to ~/Library/Application Support/Usage, never a credential."
+            footnote: "Usage keeps no credential. It reads what each tool already stores, and writes balance samples, last-good readings, rate-limit retry deadlines, and a launch log to ~/Library/Application Support/Usage, never a credential. Custom sources are plans and commands you list in sources.json; Usage reads that file on every poll and when the panel opens."
         ) {
             SlateRow(
                 title: "Poll interval",
@@ -171,6 +171,15 @@ struct SettingsView: View {
                 SlateInfoRow(title: "DeepSeek", value: APIKey.deepseekFiles(tools: .installed)[0], monospaced: true)
                 SlateInfoRow(title: "Moonshot", value: APIKey.moonshotFiles(tools: .installed)[0], monospaced: true)
                 SlateInfoRow(title: "Soniox", value: "SONIOX_API_KEY in " + APIKey.secretsFile(tools: .installed), monospaced: true)
+                SlateInfoRow(title: "Custom", value: model.sourcesPath, monospaced: true)
+            }
+            SlateDivider()
+            SlateRow(
+                title: "Custom sources",
+                detail: "A plan with no usage API, or a command that prints a percent. Opens sources.json, made from a commented template the first time."
+            ) {
+                Button("Edit sources…") { model.editSources() }
+                    .buttonStyle(HouseChipButtonStyle())
             }
         }
         .onChange(of: pollInterval) { _, _ in model.schedulePoll() }

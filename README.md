@@ -54,6 +54,9 @@ tight, and when it resets, without opening a browser tab per provider.
   they are older than one poll interval, reads again behind the panel.
 - **Status item.** The gauge, as a template image, with one subscription's
   session percent beside it (Settings › Menu bar; Claude by default, or none).
+- **Custom sources** you add yourself in `~/.config/usage-bar/sources.json`,
+  for a plan with no usage API (SuperGrok, X Premium) or a script that prints
+  a percent. See [Custom sources](#custom-sources).
 - **Two diagnostics** that open no window: `--doctor` and `--render-proof`.
 
 ## Requirements
@@ -147,6 +150,63 @@ usage-bar --render-proof <dir>     # every panel and settings surface, as PNGs
 `--doctor` names a source with no tool or key as NOT SET UP and still exits
 0 when every source that is set up read.
 
+## Custom sources
+
+Add a plan or a meter without code in `~/.config/usage-bar/sources.json`.
+Settings › Sources › Edit sources… (also in the panel and the Usage menu)
+opens the file in your default editor, and writes a commented template first
+when there is none. Usage reads the file on every poll and whenever the panel
+opens, so a saved change shows the next time you open the panel. No restart.
+
+A line that starts with `//` is a comment. Everything else is JSON:
+
+```jsonc
+{
+  "sources": [
+    // A plan with no usage API. The bar is how much of the current billing
+    // period has passed. "renews" is any one renewal date, past or future;
+    // Usage rolls it forward each period (the 31st renews on Feb 28, then on
+    // Mar 31 again). The row reads "renews in 16 days · $30/mo".
+    {"kind": "manual", "name": "SuperGrok", "plan": "SuperGrok",
+     "cost": 30, "currency": "USD", "period": "monthly",
+     "renews": "2026-11-03", "url": "https://grok.com"},
+
+    {"kind": "manual", "name": "X Premium", "plan": "Premium+",
+     "cost": 84, "period": "yearly", "renews": "2026-03-01"},
+
+    // A program you write. It prints one JSON object:
+    //   {"percent": 42, "detail": "420 of 1000 credits", "resetsAt": "2026-11-01T00:00:00Z"}
+    // "percent" is 0 to 100, or null when unknown; the rest is optional.
+    {"kind": "command", "name": "Team credits", "lane": "apiKey",
+     "command": ["~/bin/team-usage", "--json"], "timeout": 10}
+  ]
+}
+```
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `kind` | both | `"manual"` or `"command"` |
+| `name` | both | The row's title. Each name must be unique. |
+| `lane` | both | `"subscription"` (default) or `"apiKey"`: which group the row sits in |
+| `url` | both | What Return on the row opens. Without one, Return opens `sources.json`. |
+| `plan` | both | The text on the right of the row |
+| `renews` | manual | One renewal date, `YYYY-MM-DD` |
+| `period` | manual | `"monthly"` (default) or `"yearly"` |
+| `cost`, `currency` | manual | The price shown after the renewal; currency defaults to USD |
+| `command` | command | An argument array, run directly with no shell, or a string, run with `/bin/sh -c`. A bare program name is looked for in `~/.local/bin`, `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` and `/bin`. |
+| `timeout` | command | Seconds before the program is stopped: default 10, 1 to 60 |
+
+A command that fails, times out, or prints something Usage cannot read keeps
+its last good numbers on the row, marked stale, and says why, as the built-in
+sources do. A program may log above its answer: Usage reads the whole output
+as JSON, or else its last line. An entry with a mistake is its own red row
+that names the mistake; a file that is not valid JSON is one red "Custom
+sources" row with the line number. Neither stops the other rows.
+
+A command source runs your own program on every poll, with your user's
+rights. Usage reads only its output; whatever the program reads or sends is
+the program's business, not Usage's.
+
 ## Privacy
 
 **What Usage reads.** Each source's credential, from where that provider's
@@ -163,6 +223,8 @@ each the provider's own usage or balance endpoint: `api.anthropic.com`,
 `chatgpt.com`, `api.deepseek.com`, `api.moonshot.cn` (or `MOONSHOT_BASE_URL`),
 and `api.soniox.com`. Antigravity is read through the local `agy` CLI.
 There is no telemetry, no crash reporting, no update check, and no other host.
+A custom command source runs a program you wrote, which may call any host
+you tell it to; Usage itself still calls only the five above.
 
 **Unofficial endpoints.** The Claude Code and Codex rows read usage endpoints
 that Anthropic and OpenAI do not document for public use. Usage calls them with
@@ -177,7 +239,9 @@ balance samples (`samples.json`, kept 30 days), last-good readings
 and one line per launch and quit (`events.log`). They hold amounts, plan
 names, dates and process IDs, never a credential or a token. `UserDefaults`
 holds the appearance, the poll interval, and which provider the status item
-shows. See also [PRIVACY.md](PRIVACY.md).
+shows. Usage reads `~/.config/usage-bar/sources.json` and writes it only once,
+from the template, when you choose Edit sources… and it does not exist yet.
+See also [PRIVACY.md](PRIVACY.md).
 
 ## Build from source
 
@@ -196,9 +260,10 @@ login keychain, or ad hoc when there is none. Force ad hoc with
 The code is two targets. `UsageBarCore` is pure: the meter model, one parser
 per source, the credential readers, the HTTP call, and the sample store, with
 no AppKit and no timer. `UsageBar` is the app: the panel, the polling, and
-the status item. Adding a source is one case on `ProviderID`, one parser in
-`Parsers.swift` with a fixture and a test, and one function in
-`ProviderReader`.
+the status item. Adding a built-in source is one static member on
+`ProviderID` (added to `ProviderID.builtIn`), one parser in `Parsers.swift`
+with a fixture and a test, and one function in `ProviderReader`. A source that
+needs no code is a custom source instead.
 
 ### Install safety
 

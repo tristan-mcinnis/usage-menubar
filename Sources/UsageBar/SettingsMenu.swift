@@ -21,11 +21,16 @@ final class SettingsMenu: NSObject, NSMenuItemValidation {
     static let closeTitle = "Close Window"
     static let quitTitle = "Quit \(appName)"
 
+    static let editSourcesTitle = "Edit Sources…"
+
     /// Brings the Settings window back, for the app menu's Settings item.
     private let showSettings: () -> Void
+    /// Opens the custom-source file, for the app menu's Edit Sources item.
+    private let editSources: () -> Void
 
-    init(showSettings: @escaping () -> Void) {
+    init(showSettings: @escaping () -> Void, editSources: @escaping () -> Void = {}) {
         self.showSettings = showSettings
+        self.editSources = editSources
         super.init()
     }
 
@@ -36,6 +41,7 @@ final class SettingsMenu: NSObject, NSMenuItemValidation {
         app.addItem(item("About \(Self.appName)", #selector(about), ""))
         app.addItem(.separator())
         app.addItem(item("Settings…", #selector(openSettings), ","))
+        app.addItem(item(Self.editSourcesTitle, #selector(openSources), ""))
         app.addItem(.separator())
         app.addItem(item("Hide \(Self.appName)", #selector(hideApp), "h"))
         app.addItem(.separator())
@@ -104,7 +110,7 @@ final class SettingsMenu: NSObject, NSMenuItemValidation {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(about), #selector(openSettings), #selector(quit):
+        case #selector(about), #selector(openSettings), #selector(openSources), #selector(quit):
             return true
         default:
             return normalKeyWindow != nil
@@ -113,6 +119,7 @@ final class SettingsMenu: NSObject, NSMenuItemValidation {
 
     @objc private func about() { NSApp.orderFrontStandardAboutPanel(nil) }
     @objc private func openSettings() { showSettings() }
+    @objc private func openSources() { editSources() }
     @objc private func hideApp() { NSApp.hide(nil) }
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func minimize() { normalKeyWindow?.performMiniaturize(nil) }

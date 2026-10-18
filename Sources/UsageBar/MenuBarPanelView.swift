@@ -356,6 +356,9 @@ struct MenuBarPanelView: View {
         } else if let balance = shown.first(where: \.isBalance), let detail = balance.detail(now: now) {
             parts.append(detail)
         }
+        // A source's own words (a custom command's detail, a manual plan's
+        // renewal and price) follow the reset, once each.
+        for note in shown.compactMap(\.note) where !parts.contains(note) { parts.append(note) }
         let folded = reading.meters.count - shown.count
         if folded > 0 { parts.append("\(folded) more") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

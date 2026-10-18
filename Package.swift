@@ -49,5 +49,13 @@ let package = Package(
             // writing them.
             resources: [.copy("Fixtures")]
         ),
+        // Custom sources (sources.json): the config parser, the billing-period
+        // math, and the command output parser. A new target, so it starts on
+        // Swift Testing (design-system/SWIFT.md rule 4); the XCTest targets
+        // above stay on XCTest until they migrate whole.
+        .testTarget(
+            name: "UsageBarCustomSourceTests",
+            dependencies: ["UsageBarCore"]
+        ),
     ]
 )
