@@ -18,7 +18,7 @@ let package = Package(
         .executable(name: "usage-bar", targets: ["UsageBar"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/tristan-mcinnis/design-system", from: "1.0.0"),
+        .package(url: "https://github.com/tristan-mcinnis/design-system", from: "1.1.0"),
     ],
     targets: [
         .target(name: "UsageBarCore"),

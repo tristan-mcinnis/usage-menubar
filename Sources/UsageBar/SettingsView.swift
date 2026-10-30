@@ -62,22 +62,29 @@ struct SettingsView: View {
 
     private var pane: some View {
         VStack(spacing: 0) {
-            PaneHeader(
-                title: "General",
-                purpose: "How Usage looks, what the menu bar shows, and how often the sources are asked."
-            )
-            // The window hides its title bar, so the pane starts under the
-            // traffic lights; this is the clearance for them.
-            .padding(.top, House.Spacing.lg)
-            ScrollView {
-                VStack(alignment: .leading, spacing: House.Spacing.md) {
-                    appearanceCard
-                    menuBarCard
-                    sourcesCard
+            // Form spacing (design-system/docs/form-spacing.md): pane padding
+            // xxxl top and bottom, xxl at the sides, groups xl apart. The
+            // xxxl top also clears the traffic lights of the hidden title bar.
+            // PaneHeader carries its own xxl side inset, so the sides are set
+            // on the cards only; the bottom xxxl sits inside the scroll so it
+            // follows the last card.
+            VStack(spacing: House.Spacing.xl) {
+                PaneHeader(
+                    title: "General",
+                    purpose: "How Usage looks, what the menu bar shows, and how often the sources are asked."
+                )
+                ScrollView {
+                    VStack(alignment: .leading, spacing: House.Spacing.xl) {
+                        appearanceCard
+                        menuBarCard
+                        sourcesCard
+                    }
+                    .padding(.horizontal, House.Spacing.xxl)
+                    .padding(.bottom, House.Spacing.xxxl)
                 }
-                .padding(House.Spacing.lg)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.top, House.Spacing.xxxl)
             FooterWell {
                 FooterStatus(text: model.snapshot.headline.text, tint: footerTint)
             } trailing: {
