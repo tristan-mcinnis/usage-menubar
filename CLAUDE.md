@@ -145,8 +145,8 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
 
 - `../design-system`: the rule (`DESIGN.md`), the token generator, and the
   component registry. Its `CONSUMERS` list names this repo's copy.
-- `../memory-menubar`: the panel plumbing, the settings shell, the render
-  proof and the doctor were ported from here.
+- `../_archive/memory-menubar` (sunset 2026-10-18): the panel plumbing, the
+  settings shell, the render proof and the doctor were ported from here.
 - `../cotype`: the first Slate menu-bar app and the origin of the kit.
 
 ## Voice
