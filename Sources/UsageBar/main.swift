@@ -28,6 +28,13 @@ MainActor.assumeIsolated {
         exit(Doctor.run())
     }
 
+    // Open-at-login registration through SMAppService, run by install.sh from
+    // inside the installed bundle. Prints one line and exits.
+    if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "login-item" {
+        app.setActivationPolicy(.prohibited)
+        exit(LoginItem.run(Array(CommandLine.arguments.dropFirst(2))))
+    }
+
     let delegate = AppDelegate()
     app.delegate = delegate
     app.setActivationPolicy(.accessory)

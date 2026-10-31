@@ -1,5 +1,4 @@
 import AppKit
-import ServiceManagement
 import SwiftUI
 import UsageBarCore
 import HouseDesign
@@ -190,28 +189,5 @@ struct SettingsView: View {
             }
         }
         .onChange(of: pollInterval) { _, _ in model.schedulePoll() }
-    }
-}
-
-/// The login item, through `SMAppService`. The app is a menu-bar accessory, so
-/// this registers the whole bundle rather than a helper.
-enum LoginItem {
-    static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
-    }
-
-    /// Returns a note when the change could not be made, so the pane can say
-    /// what happened instead of quietly showing the wrong switch.
-    static func set(_ enabled: Bool) -> String? {
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-            return nil
-        } catch {
-            return "could not change the login item: \(error.localizedDescription)"
-        }
     }
 }
