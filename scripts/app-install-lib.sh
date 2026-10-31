@@ -412,7 +412,7 @@ _stop_running_copy() {
   local re="^$APP_DEST/Contents/MacOS/$EXEC_NAME( |\$)" uid
   uid="$(id -u)"
   pgrep -U "$uid" -f "$re" >/dev/null 2>&1 || return 0
-  log "Stopping the running $APP_NAME…"
+  log "Stopping the running ${APP_NAME}…"
   pkill -TERM -U "$uid" -f "$re" || true
   local _
   for _ in $(seq 50); do
