@@ -47,9 +47,10 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
   `didWakeNotification`. A rate-limited provider is skipped until its stored
   `retries.json` deadline passes, and the last good numbers stay visible with a
   stale/error age while it waits.
-- **No window without being asked.** `install.sh` does not launch,
-  `--render-proof` and `--doctor` set `.prohibited` and exit, and the only
-  code that takes the foreground is behind a row the user picked.
+- **No window without being asked.** `install.sh` launches with `open -g`
+  (background, no focus change). `--render-proof`, `--doctor` and
+  `login-item` set `.prohibited` and exit. The only code that takes the
+  foreground is behind a row the user picked.
 - **An install never destroys the working app.** `install.sh` verifies the
   candidate (codesign, plist id, executable, icon, LSUIElement, and the embedded
   codesign Identifier) before touching the destination, renames the previous
@@ -59,9 +60,12 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
   installed app is never silently replaced with a different signing identity
   (ad-hoc, another team, or a different identifier): that install is refused and
   only `--allow-signing-change` overrides on purpose. A held install lock is
-  refused, never stolen. Exit 3 means the app was installed but the login item
-  was not registered, and no rollback was done. Install never quits or
-  relaunches a running instance on its own.
+  refused, never stolen. Install stops this user's running copy of the
+  installed binary (`pkill -TERM -U <uid> -f`) before the swap and refuses if it
+  will not quit, then launches the new build unless `--no-launch`. The login
+  item is registered by the installed binary (`login-item register`,
+  SMAppService); a failure prints the manual step and does not fail the
+  install.
 - **Say unknown when it is unknown.** A null window is dropped, not drawn as
   0. A source that failed says why in its row. A balance with no spend yet
   draws an empty track. Never fabricate a reassuring number.

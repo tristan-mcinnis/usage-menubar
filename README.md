@@ -98,12 +98,16 @@ shasum -a 256 -c SHA256SUMS
 ```sh
 git clone https://github.com/tristan-mcinnis/usage-menubar.git
 cd usage-menubar
-./scripts/install.sh --launch      # build, copy to /Applications, add a login item, open it
+./scripts/install.sh               # build, stop the running copy, install, add a login item, open it
 ```
 
-`install.sh` does not launch the app unless you pass `--launch`, because a
-launch puts an item in the menu bar and takes focus. Without `--launch` it
-installs and registers the login item only.
+`install.sh` stops your running Usage first, so the old build cannot keep
+running, and then starts the new build in the background (`open -g`, no focus
+change). Pass `--no-launch` to install without starting it. The login item is
+registered by the app itself through SMAppService
+(`usage-bar login-item register|status|unregister`). If that fails, install
+prints the manual step (System Settings > General > Login Items) and still
+succeeds.
 
 On first launch macOS asks whether Usage may read the "Claude Code-credentials"
 keychain item. Choose Always Allow, or the Claude row stays at "Sign in".
@@ -283,8 +287,8 @@ signing identity. That install is refused and the destination is left
 untouched; pass `--allow-signing-change` only to override on purpose.
 
 Exit codes: `0` installed, `1` failed (nothing changed, or the prior app was
-restored), `3` the app was installed but the login item could not be
-registered (no rollback happened; fix the login item and re-run).
+restored). A running copy that does not quit within 5 seconds stops the
+install before anything is changed.
 
 If another install holds the lock, or a stale lock is left behind,
 `install.sh` refuses instead of stealing it. Clear a stale lock with

@@ -5,9 +5,10 @@ set -euo pipefail
 # install.sh unit tests. Everything runs against a temporary fixture on disk:
 #   - a fake (ad-hoc signed) app bundle in a temp dist directory
 #   - a destination and backup root under a temp directory
-#   - a fake-bin that stubs platform commands (codesign / osascript / open) so
-#     the tests can inject failures without touching /Applications, login items,
-#     launchctl, `open` or any real app.
+#   - a fake-bin that stubs platform commands (codesign / mv / open / pgrep /
+#     pkill) and is first on PATH for every run, so the tests can inject
+#     failures without touching /Applications, login items, `open` or any real
+#     process. The fixture binary stands in for `usage-bar login-item`.
 #
 # It never touches a real install location and never runs build-app.sh. It does
 # build real ad-hoc-signed fixture bundles so the codesign verification path is
@@ -43,6 +44,11 @@ make_bundle() {
   mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
   cat > "$app/Contents/MacOS/$EXEC_NAME" <<EOF
 #!/bin/sh
+if [ "\$1" = login-item ]; then
+  d="\${FAKEDIR:-$TD/.none}"; mkdir -p "\$d"; echo "\$2" > "\$d/login-item-called"
+  if [ -f "\$d/login-item-fail" ]; then echo "login item: FAKE failure" >&2; exit 1; fi
+  echo "enabled: $APP_NAME opens at login"; exit 0
+fi
 echo "$APP_NAME $tag"
 EOF
   chmod +x "$app/Contents/MacOS/$EXEC_NAME"
@@ -70,7 +76,7 @@ installed_tag() {  # marker of the app currently at DEST
 }
 
 # Run install.sh, capturing combined output; returns install.sh's exit code.
-# stdin is /dev/null so the fake osascript never blocks on a tty.
+# stdin is /dev/null so no stub ever blocks on a tty.
 run_capture() {
   set +e
   CAPTURED="$(bash "$INSTALL" "$@" 2>&1 </dev/null)"
@@ -163,25 +169,6 @@ exec /bin/mv "$@"
 F
 sed -i '' "s|\$TD|$TD|g" "$TD/fakebin/mv"
 
-cat > "$TD/fakebin/osascript" <<'F'
-#!/usr/bin/env bash
-FAKEDIR="${FAKEDIR:-$TD/.none}"
-mkdir -p "$FAKEDIR"; echo called > "$FAKEDIR/osascript-called"
-# The delete+make block is fed via stdin (heredoc); the exists query via -e.
-input="$(cat 2>/dev/null || true)"
-args="$*"
-if [[ "$args" == *"exists login item"* ]]; then
-  if [[ -f "$FAKEDIR/osascript-login-item-exists" ]]; then echo "true"; else echo "false"; fi
-  exit 0
-fi
-if [[ "$input" == *"make login item"* ]] && [[ -f "$FAKEDIR/osascript-fail-make" ]]; then
-  echo "FAKE osascript: make login item failed" >&2
-  exit 1
-fi
-exit 0
-F
-sed -i '' "s|\$TD|$TD|g" "$TD/fakebin/osascript"
-
 cat > "$TD/fakebin/open" <<'F'
 #!/usr/bin/env bash
 FAKEDIR="${FAKEDIR:-$TD/.none}"
@@ -189,13 +176,34 @@ mkdir -p "$FAKEDIR"; echo called > "$FAKEDIR/open-called"
 exit 0
 F
 sed -i '' "s|\$TD|$TD|g" "$TD/fakebin/open"
+
+# pgrep / pkill: a copy "runs" while FAKEDIR/running exists. pkill removes it
+# unless FAKEDIR/ignore-term says the process ignores TERM. Every call is logged.
+cat > "$TD/fakebin/pgrep" <<'F'
+#!/usr/bin/env bash
+FAKEDIR="${FAKEDIR:-$TD/.none}"
+mkdir -p "$FAKEDIR"; echo "pgrep $*" >> "$FAKEDIR/proc-calls"
+[[ -f "$FAKEDIR/running" ]]
+F
+sed -i '' "s|\$TD|$TD|g" "$TD/fakebin/pgrep"
+cat > "$TD/fakebin/pkill" <<'F'
+#!/usr/bin/env bash
+FAKEDIR="${FAKEDIR:-$TD/.none}"
+mkdir -p "$FAKEDIR"; echo "pkill $*" >> "$FAKEDIR/proc-calls"
+[[ -f "$FAKEDIR/ignore-term" ]] || rm -f "$FAKEDIR/running"
+exit 0
+F
+sed -i '' "s|\$TD|$TD|g" "$TD/fakebin/pkill"
 chmod +x "$TD/fakebin"/*
+mkdir -p "$TD/.none"
+# Install launches by default, so no run may reach the real `open` or pkill.
+export PATH="$TD/fakebin:$PATH"
 
 DEST="$TD/app/$APP_NAME.app"
 BAK="$TD/backup"
 
 say "1. fresh install: verifies candidate, publishes, leaves no snapshot (no prior)"
-rm -rf "$DEST" "$BAK" "$TD/app"
+rm -rf "$DEST" "$BAK" "$TD/app" "$TD/.none/open-called"
 if run_capture --no-build --no-login-item --dest "$DEST" --backup-root "$BAK" --dist "$TD/d1/$APP_NAME.app"; then
   pass "install.sh exit 0"
 else
@@ -205,7 +213,7 @@ fi
 [[ -x "$DEST/Contents/MacOS/$EXEC_NAME" ]] && pass "executable installed" || fail "executable missing"
 [[ "$(installed_tag "$DEST")" == "v1" ]] && pass "installed v1" || fail "installed tag $(installed_tag "$DEST")"
 [[ "$(snapshot_count "$BAK")" == "0" ]] && pass "no snapshot on first install" || fail "unexpected snapshot"
-[[ "$CAPTURED" != *"open-called"* ]] && pass "no launch/open on default" || fail "open was called on default"
+[[ -f "$TD/.none/open-called" ]] && pass "default install launches (open)" || fail "default install did not launch"
 
 say "1b. --launch opens the installed path after publish"
 DEST_LAUNCH="$TD/launch/$APP_NAME.app"
@@ -301,39 +309,76 @@ else
 fi
 [[ "$CAPTURED" == *"no snapshots"* ]] && pass "reported no snapshots" || fail "did not report no snapshots"
 
-say "7. login-item failure is reported truthfully and the app is still installed"
+say "7. login-item failure prints the manual step and the install still succeeds"
 DEST7="$TD/app7/$APP_NAME.app"
 BAK7="$TD/backup7"
-mkdir -p "$TD/fake-login"
-touch "$TD/fake-login/osascript-login-item-exists"   # a login item existed before
-touch "$TD/fake-login/osascript-fail-make"           # the make step fails
-rm -f "$TD/fake-login/osascript-called"
-rc=0
-if PATH="$TD/fakebin:$PATH" FAKEDIR="$TD/fake-login" run_capture \
+rm -rf "$TD/fake-login"; mkdir -p "$TD/fake-login"
+touch "$TD/fake-login/login-item-fail"
+if FAKEDIR="$TD/fake-login" run_capture \
     --no-build --dest "$DEST7" --backup-root "$BAK7" \
     --dist "$TD/d1/$APP_NAME.app"; then
-  fail "install with a failing login item unexpectedly succeeded"
+  pass "login-item failure does not fail the install (exit 0)"
 else
-  rc=$?
+  fail "login-item failure failed the install (exit $?): $CAPTURED"
 fi
-[[ "$rc" -eq 3 ]] && pass "login-item failure exits 3 (installed, no rollback)" || fail "login-item failure exit $rc (wanted 3)"
 [[ -d "$DEST7" ]] && pass "app installed despite login-item failure" || fail "app missing after login-item failure"
-[[ -f "$TD/fake-login/osascript-called" ]] && pass "osascript was consulted" || fail "osascript was never consulted"
-grep -q "login item could NOT be updated" <<<"$CAPTURED" 2>/dev/null && pass "truthful login-item warning shown" || fail "no truthful login-item warning"
+[[ "$(cat "$TD/fake-login/login-item-called" 2>/dev/null)" == "register" ]] && pass "installed binary ran 'login-item register'" || fail "installed binary was not asked to register"
+grep -q "System Settings > General > Login Items" <<<"$CAPTURED" && pass "manual login-item step printed" || fail "no manual step: $CAPTURED"
+[[ -f "$TD/fake-login/open-called" ]] && pass "new build launched after login-item failure" || fail "not launched after login-item failure"
 
-say "8. --no-login-item installs without consulting osascript"
+say "7b. a working login item registers through the installed binary"
+rm -rf "$TD/fake-login-ok"; mkdir -p "$TD/fake-login-ok"
+if FAKEDIR="$TD/fake-login-ok" run_capture --no-build --no-launch --dest "$TD/app7b/$APP_NAME.app" \
+    --backup-root "$TD/backup7b" --dist "$TD/d1/$APP_NAME.app"; then
+  pass "install with login item exit 0"
+else
+  fail "install with login item exit $?: $CAPTURED"
+fi
+[[ "$CAPTURED" == *"enabled: $APP_NAME opens at login"* ]] && pass "registration status shown" || fail "registration status missing: $CAPTURED"
+[[ ! -f "$TD/fake-login-ok/open-called" ]] && pass "--no-launch does not open" || fail "--no-launch opened the app"
+
+say "8. --no-login-item installs without running the login-item command"
 DEST8="$TD/app8/$APP_NAME.app"
 BAK8="$TD/backup8"
-mkdir -p "$TD/fake-nologin"
-rm -f "$TD/fake-nologin/osascript-called"
-if PATH="$TD/fakebin:$PATH" FAKEDIR="$TD/fake-nologin" bash "$INSTALL" \
+rm -rf "$TD/fake-nologin"; mkdir -p "$TD/fake-nologin"
+if FAKEDIR="$TD/fake-nologin" bash "$INSTALL" \
     --no-build --no-login-item --dest "$DEST8" --backup-root "$BAK8" \
-    --dist "$TD/d1/$APP_NAME.app" >/dev/null 2>&1; then
+    --dist "$TD/d1/$APP_NAME.app" >/dev/null 2>&1 </dev/null; then
   pass "no-login-item install exit 0"
 else
   fail "no-login-item install failed"
 fi
-[[ ! -f "$TD/fake-nologin/osascript-called" ]] && pass "osascript not called with --no-login-item" || fail "osascript called despite --no-login-item"
+[[ ! -f "$TD/fake-nologin/login-item-called" ]] && pass "login-item not run with --no-login-item" || fail "login-item run despite --no-login-item"
+
+say "8b. a running copy is stopped (TERM, this user, exact binary) before the swap"
+DEST8B="$TD/app8b/$APP_NAME.app"
+rm -rf "$TD/fake-run"; mkdir -p "$TD/fake-run"
+touch "$TD/fake-run/running"
+if FAKEDIR="$TD/fake-run" run_capture --no-build --no-login-item --dest "$DEST8B" \
+    --backup-root "$TD/backup8b" --dist "$TD/d1/$APP_NAME.app"; then
+  pass "install over a running copy exit 0"
+else
+  fail "install over a running copy exit $?: $CAPTURED"
+fi
+want="pkill -TERM -U $(id -u) -f ^$DEST8B/Contents/MacOS/$EXEC_NAME( |\$)"
+grep -qxF "$want" "$TD/fake-run/proc-calls" && pass "pkill -TERM -U <uid> -f <installed binary>" || fail "pkill call wrong: $(grep pkill "$TD/fake-run/proc-calls")"
+[[ "$CAPTURED" == *"Stopping the running $APP_NAME"* ]] && pass "stop reported" || fail "stop not reported: $CAPTURED"
+[[ -f "$TD/fake-run/open-called" ]] && pass "new build launched after stop" || fail "new build not launched after stop"
+
+say "8c. a copy that will not quit aborts the install before the destination is touched"
+DEST8C="$TD/app8c/$APP_NAME.app"
+run_capture --no-build --no-login-item --no-launch --dest "$DEST8C" --backup-root "$TD/backup8c" --dist "$TD/d1/$APP_NAME.app"   # v1
+rm -rf "$TD/fake-stuck"; mkdir -p "$TD/fake-stuck"
+touch "$TD/fake-stuck/running" "$TD/fake-stuck/ignore-term"
+if FAKEDIR="$TD/fake-stuck" run_capture --no-build --no-login-item --dest "$DEST8C" \
+    --backup-root "$TD/backup8c" --dist "$TD/d2/$APP_NAME.app"; then
+  fail "install over a stuck copy unexpectedly succeeded"
+else
+  pass "stuck copy refused (exit $?)"
+fi
+[[ "$(installed_tag "$DEST8C")" == "v1" ]] && pass "destination untouched (still v1)" || fail "destination changed: $(installed_tag "$DEST8C")"
+[[ ! -f "$TD/fake-stuck/open-called" ]] && pass "nothing launched after refusal" || fail "launched after refusal"
+[[ ! -d "$TD/app8c/.$APP_NAME.install.lock" ]] && pass "lock released after refusal" || fail "lock left after refusal"
 
 say "9. concurrent lock: held locks are refused (never stolen), no GNU timeout"
 DEST9="$TD/app9/$APP_NAME.app"

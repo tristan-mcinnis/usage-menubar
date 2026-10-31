@@ -4,9 +4,9 @@ set -euo pipefail
 
 # Install Usage.app and register it as a login item.
 #
-#   ./scripts/install.sh                     build, install, do NOT launch
-#   ./scripts/install.sh --no-launch         the same, said out loud
-#   ./scripts/install.sh --launch            install and then open it
+#   ./scripts/install.sh                     build, stop the running copy, install, launch
+#   ./scripts/install.sh --launch            the same, said out loud
+#   ./scripts/install.sh --no-launch         install but leave it closed
 #   ./scripts/install.sh --no-build          install whatever is already in dist/
 #   ./scripts/install.sh --rollback          restore the most recent backup snapshot
 #   ./scripts/install.sh --rollback <id>     restore a specific backup snapshot
@@ -17,10 +17,10 @@ set -euo pipefail
 #   ./scripts/install.sh --backup-root <p>   keep snapshots under <p> instead of the default
 #   ./scripts/install.sh --dist <path>       use <path> as the bundle instead of dist/Usage.app
 #
-# Not launching is the default on purpose: Usage puts an item in the menu bar
-# and a launch steals focus. Nothing here opens a window, reveals a folder, or
-# brings an app forward unless --launch is given, and install never quits or
-# relaunches a running instance on its own.
+# Install stops this user's running Usage first (TERM, then waits), so the old
+# build cannot keep running, and then launches the new build with `open -g`,
+# which starts it in the background without taking focus. Nothing here opens a
+# window or reveals a folder.
 #
 # Every replacement is staged and verified (codesign, plist id, executable,
 # icon, LSUIElement) before the installed app is touched. The previous app is
@@ -34,10 +34,14 @@ set -euo pipefail
 # That install is refused and the destination is left untouched unless
 # --allow-signing-change is passed on purpose.
 #
+# The login item is registered by the installed app itself
+# (`usage-bar login-item register`, SMAppService). If that fails, the manual
+# step (System Settings > General > Login Items) is printed and the install
+# still succeeds.
+#
 # Exit codes: 0 installed, 1 failed (nothing changed, or the prior app was
-# restored), 3 the app was installed but the login item could NOT be registered
-# (no rollback was done; fix the login item and re-run). A held install lock is
-# refused rather than stolen; clear a stale lock and retry.
+# restored). A held install lock is refused rather than stolen; clear a stale
+# lock and retry.
 #
 # The shared engine lives in scripts/app-install-lib.sh; the safety rules that
 # govern replacement are documented there.
@@ -50,7 +54,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$ROOT/Resources/Info.plist")"
 
 INSTALL_BUILD=1
-INSTALL_LAUNCH=0
+INSTALL_LAUNCH=1
 INSTALL_NO_LOGIN_ITEM=0
 INSTALL_ALLOW_SIGNING_CHANGE=0
 INSTALL_CMD="install"
@@ -59,7 +63,7 @@ INSTALL_DEST=""
 INSTALL_BACKUP_ROOT=""
 INSTALL_DIST_APP=""
 
-usage() { sed -n '5,43p' "$0"; }
+usage() { sed -n '5,47p' "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

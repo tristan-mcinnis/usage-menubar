@@ -17,7 +17,7 @@
 #
 #   INSTALL_CMD            install | rollback | list-backups
 #   INSTALL_BUILD          1 to run scripts/build-app.sh, 0 to skip
-#   INSTALL_LAUNCH         1 to `open` after install, 0 to leave it closed
+#   INSTALL_LAUNCH         1 to `open -g` after install (default), 0 to leave it closed
 #   INSTALL_NO_LOGIN_ITEM  1 to skip login-item (re)registration
 #   INSTALL_ALLOW_SIGNING_CHANGE  1 to allow replacing a properly-signed app with
 #                          a different signing identity (default 0 = refuse)
@@ -42,8 +42,12 @@
 #     in the backup root. Snapshots are never auto-pruned.
 #   - The whole mutating phase is serialised by a lock, so two concurrent
 #     installs cannot corrupt the destination.
-#   - Only `--launch` opens the app; install never quits or relaunches a running
-#     instance on its own.
+#   - This user's running copy of the installed app is stopped (TERM) before
+#     the swap, so the old build cannot keep running. Install then launches the
+#     new build in the background unless --no-launch is given.
+#   - The login item is registered by the installed binary itself
+#     (`$EXEC_NAME login-item register`, SMAppService). If that fails, the
+#     manual step is printed and the install still succeeds.
 
 set -euo pipefail
 
@@ -82,7 +86,7 @@ _resolve_config() {
 
   INSTALL_CMD="${INSTALL_CMD:-install}"
   INSTALL_BUILD="${INSTALL_BUILD:-1}"
-  INSTALL_LAUNCH="${INSTALL_LAUNCH:-0}"
+  INSTALL_LAUNCH="${INSTALL_LAUNCH:-1}"
   INSTALL_NO_LOGIN_ITEM="${INSTALL_NO_LOGIN_ITEM:-0}"
   INSTALL_ALLOW_SIGNING_CHANGE="${INSTALL_ALLOW_SIGNING_CHANGE:-0}"
   INSTALL_ROLLBACK_ID="${INSTALL_ROLLBACK_ID:-}"
@@ -387,39 +391,35 @@ _swap_publish() {
 # Login item
 # ---------------------------------------------------------------------------
 
-_login_item_exists() {
-  local r
-  r="$(osascript -e "tell application \"System Events\" to exists login item \"$APP_NAME\"" 2>/dev/null || true)"
-  [[ "$r" == "true" ]]
-}
-
+# SMAppService from inside the installed bundle: no System Events, so no
+# Automation grant to fail or stall on. Never fatal: on failure the manual step
+# is printed and the install carries on.
 _register_login_item() {
   log "Registering $APP_NAME as a login item…"
-  local had=0
-  _login_item_exists && had=1
-  if ! osascript >/dev/null 2>&1 <<OSA
-tell application "System Events"
-    if exists login item "$APP_NAME" then delete login item "$APP_NAME"
-    make login item at end with properties {name:"$APP_NAME", path:"$APP_DEST", hidden:false}
-end tell
-OSA
-  then
-    # Never lose the old login item silently. Report the truth and, when a
-    # login item existed before, put it back as a best effort.
-    warn "the app was installed at $APP_DEST, but its login item could NOT be updated"
-    if [[ "$had" -eq 1 ]]; then
-      osascript >/dev/null 2>&1 <<OSA || true
-tell application "System Events"
-    if exists login item "$APP_NAME" then delete login item "$APP_NAME"
-    make login item at end with properties {name:"$APP_NAME", path:"$APP_DEST", hidden:false}
-end tell
-OSA
-      warn "the previous login item was re-registered (best effort)"
-    fi
-    return 1
+  if ! "$APP_DEST/Contents/MacOS/$EXEC_NAME" login-item register; then
+    warn "login item not set; turn $APP_NAME on in System Settings > General > Login Items"
   fi
-  log "  login item registered."
-  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Running copy
+# ---------------------------------------------------------------------------
+
+# Stop this user's running copy of the installed app, so the old build does not
+# keep running after the swap. Signal first: macOS pkill rejects options after
+# -f's pattern.
+_stop_running_copy() {
+  local re="^$APP_DEST/Contents/MacOS/$EXEC_NAME( |\$)" uid
+  uid="$(id -u)"
+  pgrep -U "$uid" -f "$re" >/dev/null 2>&1 || return 0
+  log "Stopping the running $APP_NAME…"
+  pkill -TERM -U "$uid" -f "$re" || true
+  local _
+  for _ in $(seq 50); do
+    pgrep -U "$uid" -f "$re" >/dev/null 2>&1 || return 0
+    sleep 0.1
+  done
+  die "$APP_NAME did not quit; quit it from the menu bar and re-run (nothing was changed)"
 }
 
 # ---------------------------------------------------------------------------
@@ -598,26 +598,20 @@ app_install_main() {
   fi
 
   _acquire_lock
+  _stop_running_copy
   _swap_publish "$DIST_APP" "candidate" || { _release_lock; exit 1; }
 
-  # Exit 3 means the app was installed (a rollback was NOT done) but the login
-  # item registration failed.
-  local login_rc=0
   if [[ "$INSTALL_NO_LOGIN_ITEM" != "1" ]]; then
-    if ! _register_login_item; then login_rc=3; fi
+    _register_login_item
   fi
 
   if [[ "$INSTALL_LAUNCH" == "1" ]]; then
     log "Launching ${APP_DEST}…"
-    open "$APP_DEST"
+    open -g "$APP_DEST"
   else
-    log "Installed to $APP_DEST (not launched). Open it from the menu bar when you want it."
+    log "Installed to $APP_DEST (not launched)."
   fi
 
   _release_lock
-  if [[ "$login_rc" -ne 0 ]]; then
-    log "Installed, but the login item could NOT be registered. The app is in place; fix the login item and re-run, or start $APP_NAME manually. (exit $login_rc)"
-    exit "$login_rc"
-  fi
   exit 0
 }
