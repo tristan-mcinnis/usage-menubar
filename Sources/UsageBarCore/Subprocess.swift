@@ -50,44 +50,68 @@ public enum Subprocess {
         process.standardError = err
         process.standardInput = FileHandle.nullDevice
 
+        // Set before `run()`: a handler set later can miss a fast exit, and
+        // mutating a running `Process` races its own termination callback.
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+
         do {
             try process.run()
         } catch {
             return CommandResult(exitCode: -1, stdout: "", stderr: "\(executable): \(error.localizedDescription)")
         }
 
-        // Read both pipes on their own threads. A command that fills the 64 KB
-        // pipe buffer while we wait on `waitUntilExit` would deadlock
-        // otherwise, and `agy --print=/usage` prints a whole JSON document.
-        var outData = Data()
-        var errData = Data()
-        let group = DispatchGroup()
-        for (pipe, sink) in [(out, { outData = $0 }), (err, { errData = $0 })] as [(Pipe, (Data) -> Void)] {
-            DispatchQueue.global(qos: .utility).async(group: group) {
-                sink(pipe.fileHandleForReading.readDataToEndOfFile())
+        // Read both pipes while the child runs. A command that fills the 64 KB
+        // pipe buffer while we wait for its exit would deadlock otherwise, and
+        // `agy --print=/usage` prints a whole JSON document. Each reader owns
+        // its own `StreamSink`; the caller reads it only through the lock.
+        let outSink = StreamSink()
+        let errSink = StreamSink()
+        let readers = DispatchGroup()
+        for (pipe, sink) in [(out, outSink), (err, errSink)] {
+            DispatchQueue.global(qos: .utility).async(group: readers) {
+                sink.finish(pipe.fileHandleForReading.readDataToEndOfFile())
             }
         }
 
-        let deadline = DispatchTime.now() + timeout
-        let finished = DispatchQueue.global(qos: .utility).sync { () -> Bool in
-            let waiter = DispatchSemaphore(value: 0)
-            DispatchQueue.global(qos: .utility).async {
-                process.waitUntilExit()
-                waiter.signal()
-            }
-            return waiter.wait(timeout: deadline) == .success
-        }
+        let finished = exited.wait(timeout: .now() + timeout) == .success
+
         if !finished {
+            // Ask politely, then insist, then reap: the child is gone before
+            // this returns, whatever it does with SIGTERM.
             process.terminate()
-            _ = group.wait(timeout: .now() + 2)
+            if exited.wait(timeout: .now() + 1) == .timedOut {
+                kill(process.processIdentifier, SIGKILL)
+            }
+            process.waitUntilExit()
             return CommandResult(exitCode: -1, stdout: "", stderr: "\(executable): timed out after \(Int(timeout))s")
         }
-        _ = group.wait(timeout: .now() + 5)
+        process.waitUntilExit()
+
+        // A grandchild can keep a pipe open after the child exits. Give the
+        // readers a moment, then take whatever each one has finished with.
+        _ = readers.wait(timeout: .now() + 5)
 
         return CommandResult(
             exitCode: process.terminationStatus,
-            stdout: String(decoding: outData, as: UTF8.self),
-            stderr: String(decoding: errData, as: UTF8.self)
+            stdout: String(decoding: outSink.data ?? Data(), as: UTF8.self),
+            stderr: String(decoding: errSink.data ?? Data(), as: UTF8.self)
         )
+    }
+}
+
+/// One stream's bytes, written once by its reader thread and read by the
+/// caller. The lock is the single owner of `data`; `nil` means the reader is
+/// still blocked on the pipe.
+private final class StreamSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Data?
+
+    func finish(_ data: Data) {
+        lock.withLock { stored = data }
+    }
+
+    var data: Data? {
+        lock.withLock { stored }
     }
 }
