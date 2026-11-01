@@ -82,6 +82,7 @@ in `Tests/UsageBarCoreTests/Fixtures/`.
 
 ## Conventions
 
+- Build and test: `make build`, `make test`; warnings are errors.
 - House design through the design-system package (`HouseDesign` tokens,
   `HouseUIKit` Slate menu-bar kit), pinned in `Package.swift` by GitHub URL and
   tag. A fix lands in design-system and is released as a tag; raise the
